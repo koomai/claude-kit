@@ -83,3 +83,7 @@ Prompts that assume the [Solo](https://soloterm.com) MCP server is available.
 Each file has a title and one-line description above a `---` rule; paste everything below the rule.
 
 Prompt text meant to run somewhere Claude Code isn't — pasted into a chat window, an API call, or another model. Anything only ever used inside Claude Code belongs in `skills/` instead, so it can be invoked rather than retyped.
+
+## License
+
+[MIT](LICENSE), except the third-party prompts in `prompts/`, which remain the work of their credited authors.
