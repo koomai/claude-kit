@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "bun $HOME/.claude/hooks/safety-guard.ts" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bun $HOME/.claude/hooks/comment-budget.ts" }
+        ]
+      }
+    ]
+  }
+}

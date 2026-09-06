@@ -2,12 +2,13 @@
 
 # Claude Kit
 
-My Claude Code skills and reusable prompts.
+My Claude Code skills, reusable prompts, and hooks.
 
 | Directory | What's in it | How it's used |
 | --- | --- | --- |
 | [`skills/`](skills) | Agent skills (`SKILL.md`) | Symlinked into a skills directory |
 | [`prompts/`](prompts) | Reusable prompt text | Copied and pasted — chat, API, any model |
+| [`hooks/`](hooks) | Tool-call guards (Bun scripts) | Copied into `~/.claude/hooks` and registered in `settings.json` |
 
 ## Skills
 
@@ -83,6 +84,36 @@ Prompts that assume the [Solo](https://soloterm.com) MCP server is available.
 Each file has a title and one-line description above a `---` rule; paste everything below the rule.
 
 Prompt text meant to run somewhere Claude Code isn't — pasted into a chat window, an API call, or another model. Anything only ever used inside Claude Code belongs in `skills/` instead, so it can be invoked rather than retyped.
+
+## Hooks
+
+Scripts Claude Code runs around tool calls. They need [Bun](https://bun.sh) on the path, and each exits `0` on any internal error so a bug in the hook never gets in the way.
+
+| Hook | Event | What it does |
+| --- | --- | --- |
+| [`safety-guard`](hooks/safety-guard/safety-guard.ts) | `PreToolUse`, every tool | Stops the agent from running destructive actions or touching secrets. Each rule is a regex in a named group at the top of the file, so adding or removing one is a one-line change. |
+| [`comment-budget`](hooks/comment-budget/comment-budget.ts) | `PreToolUse`, `Bash` | Keeps prose comments out of committed code. Intercepts `git commit`, lexes the diff of what would be committed, and blocks with the offending lines listed. Override one commit with `COMMENT_BUDGET_OK=1 git commit ...`. |
+
+### `safety-guard` rules
+
+| Group | Blocked |
+| --- | --- |
+| Recursive or forced deletes | `rm` with `-r`/`-R`/`-f` in any combination, `rmdir`, and recursive `rm` aimed at `/`, `~`, `$HOME`, `..`, `.`, or a bare `*` |
+| Delete workarounds | `find -delete`, `find -exec rm`, `xargs rm`, `trash`, `mv` into `/tmp` |
+| Scripted deletes | Perl `unlink`/`rmtree`, Python `shutil.rmtree`/`os.remove`/`os.unlink`, Ruby `FileUtils.rm_rf` |
+| Database wipes | Laravel `migrate:fresh`, `migrate:refresh`, `migrate:reset`, `db:wipe` |
+| Secrets | Reading, editing, copying, moving, or sourcing any `.env` file, via file tools or shell. `.env.example`, `.env.sample`, and `.env.template` are allowed |
+
+### `comment-budget` scope
+
+Covers PHP, JS/TS, Vue, and Blade. Strings, regex literals, and heredoc bodies are lexed rather than pattern-matched, so a `//` inside a URL is not a comment. Type annotations (`@param`, `@return`, ...) and tooling directives (`@ts-ignore`, `eslint-disable`, `phpcs:`) are exempt.
+
+Copy the scripts into your hooks directory and register them in `~/.claude/settings.json` (see [`hooks/settings.example.json`](hooks/settings.example.json)):
+
+```bash
+mkdir -p ~/.claude/hooks
+cp hooks/safety-guard/safety-guard.ts hooks/comment-budget/comment-budget.ts ~/.claude/hooks/
+```
 
 ## License
 
