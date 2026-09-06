@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="claude-kit: a pixel-art toolbox robot next to the repository name">
+  <defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#1E2A3A" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="300" fill="#121A26"/>
+  <rect width="1200" height="300" fill="url(#grid)"/>
+
+  <!-- toolbox-bot, drawn on a 12px pixel grid, origin (70,70) -->
+  <g transform="translate(70 70)" shape-rendering="crispEdges">
+    <!-- handle -->
+    <rect x="60" y="0" width="48" height="12" fill="#3BB8A6"/>
+    <rect x="48" y="12" width="12" height="24" fill="#3BB8A6"/>
+    <rect x="108" y="12" width="12" height="24" fill="#3BB8A6"/>
+
+    <!-- body -->
+    <rect x="24" y="36" width="120" height="12" fill="#7EE0CE"/>
+    <rect x="12" y="48" width="144" height="84" fill="#5CCDB8"/>
+    <rect x="12" y="132" width="144" height="12" fill="#3BB8A6"/>
+    <rect x="24" y="144" width="120" height="12" fill="#2B9384"/>
+
+    <!-- latch -->
+    <rect x="72" y="36" width="24" height="12" fill="#F2D06B"/>
+    <rect x="78" y="48" width="12" height="6" fill="#F2D06B"/>
+
+    <!-- eyes (round, with a highlight) -->
+    <rect x="42" y="72" width="30" height="30" rx="8" fill="#F7FBFA"/>
+    <rect x="96" y="72" width="30" height="30" rx="8" fill="#F7FBFA"/>
+    <rect x="54" y="84" width="14" height="14" rx="4" fill="#15202B"/>
+    <rect x="108" y="84" width="14" height="14" rx="4" fill="#15202B"/>
+    <rect x="56" y="86" width="4" height="4" fill="#F7FBFA"/>
+    <rect x="110" y="86" width="4" height="4" fill="#F7FBFA"/>
+
+    <!-- smile -->
+    <rect x="66" y="114" width="36" height="6" fill="#15202B"/>
+    <rect x="60" y="108" width="6" height="6" fill="#15202B"/>
+    <rect x="102" y="108" width="6" height="6" fill="#15202B"/>
+
+    <!-- wheels -->
+    <rect x="24" y="156" width="36" height="24" rx="8" fill="#2A3444"/>
+    <rect x="108" y="156" width="36" height="24" rx="8" fill="#2A3444"/>
+    <rect x="36" y="164" width="12" height="8" fill="#5A6A80"/>
+    <rect x="120" y="164" width="12" height="8" fill="#5A6A80"/>
+
+    <!-- stray kit bits floating around -->
+    <rect x="-36" y="60" width="12" height="12" fill="#F2D06B"/>
+    <rect x="-24" y="48" width="12" height="12" fill="#F2D06B"/>
+    <rect x="180" y="24" width="12" height="12" fill="#F78C6B"/>
+    <rect x="192" y="36" width="12" height="12" fill="#F78C6B"/>
+    <rect x="168" y="132" width="12" height="12" fill="#7EE0CE"/>
+  </g>
+
+  <!-- title block -->
+  <g font-family="'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Consolas, monospace">
+    <text x="360" y="150" font-size="84" font-weight="700" fill="#F7FBFA" letter-spacing="-2">claude-kit</text>
+    <text x="364" y="200" font-size="26" fill="#8FA3B8">skills and prompts, packed and ready to go</text>
+    <!-- cursor -->
+    <rect x="1128" y="170" width="16" height="42" fill="#5CCDB8">
+      <animate attributeName="opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>

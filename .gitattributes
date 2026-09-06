@@ -1,0 +1,4 @@
+# The bundled translation script is tooling shipped with a skill, not the
+# repo's language. Without this GitHub reports the repo as 100% PHP.
+skills/*/scripts/** linguist-vendored
+assets/** linguist-vendored
