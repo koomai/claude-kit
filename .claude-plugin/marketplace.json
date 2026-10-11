@@ -1,0 +1,12 @@
+{
+  "name": "claude-kit",
+  "owner": { "name": "koomai" },
+  "description": "Claude Code plugins from koomai's claude-kit",
+  "plugins": [
+    {
+      "name": "agent-panel",
+      "source": "./plugins/agent-panel",
+      "description": "Agent panels and ping-pong planning with Claude subagents at a chosen model and effort"
+    }
+  ]
+}

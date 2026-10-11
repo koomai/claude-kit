@@ -1,0 +1,35 @@
+{
+  "name": "agent-panel",
+  "version": "0.1.0",
+  "author": {
+    "name": "koomai"
+  },
+  "description": "Agent panels and ping-pong planning with Claude subagents at a chosen model and effort",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "save": {
+      "type": "string",
+      "title": "Save answers",
+      "description": "Where each seat's answer is kept: files under the runs folder, a Solo scratchpad per run, both, or off. save=<mode> on a command overrides it for that run.",
+      "options": [
+        "files",
+        "solo",
+        "both",
+        "off"
+      ],
+      "default": "files"
+    },
+    "runsDir": {
+      "type": "string",
+      "title": "Runs folder",
+      "description": "Where saved answers go when Save answers is files or both, one folder per project and run.",
+      "default": "~/.claude/agent-panel/runs"
+    },
+    "soloBriefs": {
+      "type": "boolean",
+      "title": "Solo briefs",
+      "description": "Also read briefs from Solo prompt templates named brief-<name>.",
+      "default": false
+    }
+  }
+}

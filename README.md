@@ -2,13 +2,14 @@
 
 # Claude Kit
 
-My Claude Code skills, reusable prompts, and hooks.
+My Claude Code skills, reusable prompts, hooks, and plugins.
 
 | Directory | What's in it | How it's used |
 | --- | --- | --- |
 | [`skills/`](skills) | Agent skills (`SKILL.md`) | Symlinked into a skills directory |
 | [`prompts/`](prompts) | Reusable prompt text | Copied and pasted — chat, API, any model |
 | [`hooks/`](hooks) | Tool-call guards (Bun scripts) | Copied into `~/.claude/hooks` and registered in `settings.json` |
+| [`plugins/`](plugins) | Claude Code plugins | Installed from this repo's marketplace with `/plugin install` |
 
 ## Skills
 
@@ -114,6 +115,70 @@ Copy the scripts into your hooks directory and register them in `~/.claude/setti
 mkdir -p ~/.claude/hooks
 cp hooks/safety-guard/safety-guard.ts hooks/comment-budget/comment-budget.ts ~/.claude/hooks/
 ```
+
+## Plugins
+
+| Plugin | What it does |
+| --- | --- |
+| [`agent-panel`](plugins/agent-panel) | Agent panels and ping-pong planning with read-only Claude subagents, each at its own model and effort. |
+
+Install from a Claude Code terminal session:
+
+```
+/plugin install agent-panel --marketplace koomai/claude-kit
+```
+
+Answer `y` to add the marketplace, then pick a scope.
+
+### `agent-panel`
+
+```
+/panel opus:xhigh sonnet:high opus:high:contrarian -- Why is the feed query slow?
+/pingpong opus:xhigh sonnet:high rounds=2 -- Plan the billing migration
+/panel review brief=bughunt -- the retry changes on this branch
+```
+
+| Command | What it does |
+| --- | --- |
+| `/panel` | Several agents answer the same question independently; Claude checks the claims and synthesises one answer. |
+| `/pingpong` | Two agents each draft a plan, Claude merges them, then each round agent A challenges the plan and agent B revises it. Default 1 round, at most 5; a challenger that answers PASS ends the rounds early. |
+| `/panel-view` | Opens the pane that shows each run's step and each agent's state. |
+
+`/panel help` and `/pingpong help` list every option, preset and brief.
+
+A seat is `model:effort[:contrarian][+skill]`: models `opus`, `sonnet`, `haiku`, `fable`; efforts `low`, `medium`, `high`, `xhigh`, `max`. A contrarian seat argues against the obvious answer or answers PASS. `+skill` loads a skill's full instructions into that seat before it starts, by the name `/skills` shows (`sonnet:high+laravel-php-standards`); repeat it for more. A name that matches no skill is skipped without a warning. Seats are read-only: Read, Grep, Glob, WebFetch, WebSearch, and a git tool limited to `status`, `diff`, `log`, `show` and `blame`.
+
+#### Briefs
+
+`brief=<name>` on `/panel` gives every seat the same review lens and answer format; what you type after `--` names the work to review. Built in: [`bughunt`, `security`, `regression`, `contracts`](plugins/agent-panel/briefs). A brief is a Markdown file whose first line says what it looks for. The first match wins, in this order:
+
+1. `.claude/agent-panel/briefs/<name>.md` in the project
+2. `~/.claude/agent-panel/briefs/<name>.md`
+3. a [Solo](https://soloterm.com) prompt template named `brief-<name>`, when the "Solo briefs" setting is on
+4. the built-in briefs
+
+#### Saved answers
+
+Each seat's answer is saved as it arrives, along with the question and, for ping-pong, each draft, candidate, challenge and revision.
+
+| Setting (`/config`) | Default | What it does |
+| --- | --- | --- |
+| Save answers | `files` | `files`, `solo` (one Solo scratchpad per run), `both` or `off`. `save=<mode>` on a command overrides it for that run. |
+| Runs folder | `~/.claude/agent-panel/runs` | Where the files go: one folder per project, then one per run. |
+| Solo briefs | off | Also read briefs from Solo prompt templates named `brief-<name>`. |
+
+The Solo choices need the Solo MCP server connected; without it the run still goes ahead and says the answers were not saved there.
+
+Without seats, `/panel` uses the `quick` preset and `/pingpong` the `duo` preset. Presets live in [`presets.json`](plugins/agent-panel/presets.json):
+
+| Preset | Seats |
+| --- | --- |
+| `deep` | `opus:xhigh` `opus:high` `sonnet:high` |
+| `quick` | `sonnet:medium` `sonnet:low` `haiku:high` |
+| `duo` | `opus:high` `sonnet:high` |
+| `review` | `opus:xhigh` `sonnet:high` `opus:high:contrarian` |
+
+Asking in plain English ("get an agent panel on this", "ping-pong a plan for this") works too: the plugin registers `panel` and `pingpong` tools for Claude to call.
 
 ## License
 
