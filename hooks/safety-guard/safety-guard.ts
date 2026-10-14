@@ -97,9 +97,9 @@ const ENV_BASH_PATTERNS: RegExp[] = [
   /\bcp\s+.*\.env\b(?!\.example|\.sample|\.template)/i,
   /\bmv\s+.*\.env\b(?!\.example|\.sample|\.template)/i,
   /\btouch\s+.*\.env\b(?!\.example|\.sample|\.template)/i,
-  />\s*.*\.env\b(?!\.example|\.sample|\.template)/i,
+  />\s*\S*\.env\b(?!\.example|\.sample|\.template)/i,
   /\bsource\s+.*\.env\b(?!\.example|\.sample|\.template)/i,
-  /\.\s+.*\.env\b(?!\.example|\.sample|\.template)/i,
+  /(?:^|[;&|(])\s*\.\s+.*\.env\b(?!\.example|\.sample|\.template)/im,
 ];
 
 // =============================================================================
