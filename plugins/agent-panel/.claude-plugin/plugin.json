@@ -1,6 +1,6 @@
 {
   "name": "agent-panel",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "author": {
     "name": "koomai"
   },
@@ -24,6 +24,12 @@
       "title": "Runs folder",
       "description": "Where saved answers go when Save answers is files or both, one folder per project and run.",
       "default": "~/.claude/agent-panel/runs"
+    },
+    "skillDirs": {
+      "type": "string",
+      "title": "Skill folders",
+      "description": "Folders holding <skill>/SKILL.md that +skill on a seat loads from, comma separated, ahead of the session's own skills. skills=<folder> on a command or a preset's own folders come first.",
+      "default": ""
     },
     "soloBriefs": {
       "type": "boolean",
