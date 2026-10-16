@@ -2,13 +2,14 @@
 
 # Claude Kit
 
-My Claude Code skills, reusable prompts, and hooks.
+My Claude Code skills, reusable prompts, hooks, and plugins.
 
 | Directory | What's in it | How it's used |
 | --- | --- | --- |
 | [`skills/`](skills) | Agent skills (`SKILL.md`) | Symlinked into a skills directory |
 | [`prompts/`](prompts) | Reusable prompt text | Copied and pasted — chat, API, any model |
 | [`hooks/`](hooks) | Tool-call guards (Bun scripts) | Copied into `~/.claude/hooks` and registered in `settings.json` |
+| [`plugins/`](plugins) | Claude Code plugins | Installed from this repo's marketplace with `/plugin install` |
 
 ## Skills
 
@@ -114,6 +115,32 @@ Copy the scripts into your hooks directory and register them in `~/.claude/setti
 mkdir -p ~/.claude/hooks
 cp hooks/safety-guard/safety-guard.ts hooks/comment-budget/comment-budget.ts ~/.claude/hooks/
 ```
+
+## Plugins
+
+| Plugin | What it does |
+| --- | --- |
+| [`agent-panel`](plugins/agent-panel) | Agent panels and ping-pong planning with read-only Claude subagents, each at its own model and effort. |
+
+Install from a Claude Code terminal session:
+
+```
+/plugin install agent-panel --marketplace koomai/claude-kit
+```
+
+Answer `y` to add the marketplace, then pick a scope.
+
+### `agent-panel`
+
+```
+/panel -- Why is the feed query slow?
+/panel opus:xhigh sonnet:high opus:high:contrarian -- Why is the feed query slow?
+/pingpong opus:xhigh sonnet:high rounds=2 -- Plan the billing migration
+```
+
+Without seats, `/panel` uses the `quick` preset (`sonnet:medium` `sonnet:low` `haiku:high`) and `/pingpong` uses the `duo` preset (`opus:high` `sonnet:high`). Type `/panel help` to see all options and presets.
+
+Seats, briefs, discussion rounds, presets, the discussion page and its design file are covered in the [plugin's README](plugins/agent-panel/README.md).
 
 ## License
 

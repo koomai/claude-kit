@@ -1,0 +1,6 @@
+{
+  "deep": ["opus:xhigh", "opus:high", "sonnet:high"],
+  "quick": ["sonnet:medium", "sonnet:low", "haiku:high"],
+  "duo": ["opus:high", "sonnet:high"],
+  "review": ["opus:xhigh", "sonnet:high", "opus:high:contrarian"]
+}
