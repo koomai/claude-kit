@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import type { FolderSkill, Phase, PresetMap, PresetSource, RoundEntry, Run, RunKind, SaveMode, Seat } from '../types'
+import type { FolderSkill, Phase, PresetMap, RoundEntry, Run, RunKind, SaveMode, Seat } from '../types'
 import {
   EFFORTS,
   FALLBACK_PRESETS,
@@ -214,7 +214,7 @@ async function loadPresets($: $): Promise<Loaded> {
   const shipped = await readJsonFile($, `${$.plugin.root}/presets.json`)
   const builtIn = shipped.state === 'ok' ? readPresetLayer(shipped.value, 'built-in').presets : FALLBACK_PRESETS
   const notices: string[] = []
-  let presets = builtIn
+  const presets: PresetMap = { ...builtIn }
 
   for (const source of ['user', 'project'] as const) {
     const path = await presetsPath($, source)
@@ -223,7 +223,7 @@ async function loadPresets($: $): Promise<Loaded> {
     if (json.state !== 'ok') continue
     const layer = readPresetLayer(json.value, source, Object.keys(builtIn))
     notices.push(...layer.ignored.map(note => `${path}: ignored ${note}`))
-    presets = { ...presets, ...layer.presets }
+    Object.assign(presets, layer.presets)
   }
 
   return { presets, builtIn, notices }
@@ -945,14 +945,6 @@ Compare both drafts against the code or files they cite and settle factual disag
     await spawnSeat($, next, 0, challengeBrief(next.candidate ?? '', next.round, next.rounds))
     await writePage($, run.id)
   }
-}
-
-function seatName(run: Run, index: number): string {
-  const seat = run.seats[index]
-  if (!seat) return ''
-  if (run.kind === 'panel') return seat.label
-
-  return `${index === 0 ? 'A' : 'B'} ${seat.label}`
 }
 
 function describePhase(run: Run): string {

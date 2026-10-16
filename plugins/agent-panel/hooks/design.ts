@@ -49,7 +49,13 @@ export function readDesign(text: string): DesignLayer {
 }
 
 export function layerDesign(layers: readonly DesignLayer[]): Design {
-  return layers.reduce<Design>((design, layer) => ({ ...design, ...layer, tokens: { ...design.tokens, ...layer.tokens } }), { name: '', webfonts: '', tokens: {}, writing: '', illustrations: '', styles: '' })
+  const design: Design = { name: '', webfonts: '', tokens: {}, writing: '', illustrations: '', styles: '' }
+  for (const { tokens, ...rest } of layers) {
+    Object.assign(design, rest)
+    Object.assign(design.tokens, tokens)
+  }
+
+  return design
 }
 
 export function designCss(design: Design, sheet: string): string {
