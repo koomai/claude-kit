@@ -4,11 +4,6 @@ import { expect, test } from 'claude-code/testing'
 const COMMAND = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const BUILT_IN_BRIEF = 'Hunt for real bugs.\n\nFor each finding give severity.'
-const SOLO_TEMPLATES = [
-  { id: 7, name: 'brief-pq - Performance and Queries', description: 'Costs that grow with data.' },
-  { id: 8, name: 'orchestrator-playbook', description: 'Mentions brief-writing.' },
-]
-
 const USER_PRESETS = '/home/me/.claude/agent-panel/presets.json'
 const PROJECT_PRESETS = '.claude/agent-panel/presets.json'
 const ADS_SKILL = '---\nname: ads\ndescription: Paid advertising campaigns.\nallowed-tools: Bash\n---\n\n# Paid Ads\n\nBe a performance marketer.'
@@ -23,10 +18,8 @@ function fakeEngine(on: On, files: Record<string, string> = {}) {
   const local = (path: string) => (path.startsWith('/home/me/') || !path.includes('/.claude/') ? path : path.slice(path.indexOf('/.claude/') + 1))
   const isDir = (path: string) => Object.keys(store).some(key => key.startsWith(`${local(path)}/`))
   const writes: Record<string, string> = {}
-  const solo: { tool: string; args: Record<string, unknown> }[] = []
   const git: string[][] = []
   const isOwnFolder = (path: string) => path.includes('/.claude/')
-  const answer = (value: unknown) => ({ value: { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false } })
 
   on('agent.register', (_$, e) => {
     registers.push(JSON.stringify(e))
@@ -73,19 +66,12 @@ function fakeEngine(on: On, files: Record<string, string> = {}) {
     if (isOwnFolder(e.path) || !e.path.endsWith('/briefs')) throw new Error('ENOENT')
     return { value: [{ name: 'bughunt.md', kind: 'file', size: 1, mtimeMs: 0, isLink: false }] }
   })
-  on('mcp.call', (_$, e) => {
-    solo.push({ tool: e.tool, args: e.args })
-    if (e.tool === 'list_prompt_templates') return answer(SOLO_TEMPLATES)
-    if (e.tool === 'get_prompt_template') return answer({ id: 7, body: 'Review the work for costs that grow.' })
-    if (e.tool === 'scratchpad_write') return answer({ created: true, scratchpad_id: 501, revision: 1 })
-    return answer({ scratchpad_id: 501, revision: 2 })
-  })
   on('process.run', (_$, e) => {
     git.push([...e.argv])
     return { value: { exitCode: 0, stdout: 'diff --git a/x b/x', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 
-  return { spawns, registers, writes, solo, git, spawnOf: (label: string) => spawns.find(spawn => spawn.includes(label)) ?? '' }
+  return { spawns, registers, writes, git, spawnOf: (label: string) => spawns.find(spawn => spawn.includes(label)) ?? '' }
 }
 
 test('a bare command prints its usage', async ($, on) => {
@@ -157,36 +143,18 @@ test('rounds outside 1 to 5 from the tool or the command are refused before anyt
 test('a brief reaches every seat, and an unknown one is refused with the known names', async ($, on) => {
   const fake = fakeEngine(on)
 
-  const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'quick brief=bughunt save=off -- the retry changes' })
+  const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'quick brief=bughunt -- the retry changes' })
   expect(started.text).toContain('brief "bughunt"')
   expect(fake.spawns).toHaveLength(3)
   expect(fake.spawns[0]).toContain('For each finding give severity.')
   expect(fake.spawns[0]).toContain('the retry changes')
 
-  const refused = await $.command.run({ ...COMMAND, command: 'panel', args: 'brief=nope save=off -- q' })
+  const written = Object.keys(fake.writes).length
+  const refused = await $.command.run({ ...COMMAND, command: 'panel', args: 'brief=nope -- q' })
   expect(refused.text).toContain('No brief named "nope". Known briefs: bughunt.')
   expect((await $.command.run({ ...COMMAND, command: 'pingpong', args: 'brief=bughunt -- Plan it' })).text).toContain('brief= applies to /panel only.')
   expect(fake.spawns).toHaveLength(3)
-  expect(Object.keys(fake.writes)).toHaveLength(0)
-})
-
-test('Solo templates named brief-<name> are briefs only when the setting is on', { options: { soloBriefs: true, save: 'off' } }, async ($, on) => {
-  const fake = fakeEngine(on)
-
-  const help = (await $.command.run({ ...COMMAND, command: 'panel', args: 'help' })).text
-  expect(help).toContain('pq           solo')
-  expect(help).not.toContain('orchestrator')
-
-  await $.command.run({ ...COMMAND, command: 'panel', args: 'haiku:low brief=pq -- the feed query' })
-  expect(fake.spawns[0]).toContain('Review the work for costs that grow.')
-  expect(fake.solo.map(call => call.tool)).toContain('get_prompt_template')
-})
-
-test('Solo is not asked for briefs with the setting off', { options: { save: 'off' } }, async ($, on) => {
-  const fake = fakeEngine(on)
-
-  expect((await $.command.run({ ...COMMAND, command: 'panel', args: 'brief=pq -- q' })).text).toContain('No brief named "pq"')
-  expect(fake.solo).toHaveLength(0)
+  expect(Object.keys(fake.writes)).toHaveLength(written)
 })
 
 test('answers are saved to files by default, under the runs folder and the project', async ($, on) => {
@@ -198,18 +166,6 @@ test('answers are saved to files by default, under the runs folder and the proje
   expect(path).toMatch(/^\/home\/me\/\.claude\/agent-panel\/runs\/feed-app\/2026-10-11-[0-9a-f]{6}-why-is-the-feed-slow\/question\.md$/)
   expect(fake.writes[path ?? '']).toContain('Why is the feed slow?')
   expect(started.text).toContain('The answers are saved in /home/me/.claude/agent-panel/runs/feed-app/')
-  expect(fake.solo).toHaveLength(0)
-})
-
-test('save=solo opens a numbered scratchpad for the run and writes no files', async ($, on) => {
-  const fake = fakeEngine(on)
-
-  const started = await $.command.run({ ...COMMAND, command: 'pingpong', args: 'save=solo -- Plan the billing move' })
-
-  expect(started.text).toContain('The answers are saved in the Solo scratchpad "501. Ping-pong ')
-  expect(fake.solo.map(call => call.tool)).toEqual(['scratchpad_write', 'scratchpad_rename'])
-  expect(fake.solo[0]?.args.tags).toEqual(['agent-panel', 'pingpong'])
-  expect(Object.keys(fake.writes)).toHaveLength(0)
 })
 
 test('the git tool runs read commands by argv and refuses the rest', async ($, on) => {
@@ -224,7 +180,7 @@ test('the git tool runs read commands by argv and refuses the rest', async ($, o
   expect(fake.git).toHaveLength(1)
 })
 
-test('a folder skill reaches the seat as text on the plain agent type, and a session skill is preloaded by name', { options: { save: 'off' } }, async ($, on) => {
+test('a folder skill reaches the seat as text on the plain agent type, and a session skill is preloaded by name', async ($, on) => {
   const fake = fakeEngine(on, { '/skills/mk/ads/SKILL.md': ADS_SKILL })
 
   const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'haiku:low+ads haiku:medium+house-style skills=/skills/mk -- Critique the home page' })
@@ -241,7 +197,7 @@ test('a folder skill reaches the seat as text on the plain agent type, and a ses
   expect(started.text).not.toContain('no skill')
 })
 
-test('folders from the Skill folders setting apply without skills=', { options: { save: 'off', skillDirs: '/skills/mk, /skills/other' } }, async ($, on) => {
+test('folders from the Skill folders setting apply without skills=', { options: { skillDirs: '/skills/mk, /skills/other' } }, async ($, on) => {
   const fake = fakeEngine(on, { '/skills/mk/ads/SKILL.md': ADS_SKILL })
 
   await $.command.run({ ...COMMAND, command: 'panel', args: 'haiku:low+ads -- q' })
@@ -249,7 +205,7 @@ test('folders from the Skill folders setting apply without skills=', { options: 
   expect(fake.spawns[0]).toContain('Be a performance marketer.')
 })
 
-test('a skill found nowhere is warned about with the nearest names, and a path-like name never reads a folder', { options: { save: 'off' } }, async ($, on) => {
+test('a skill found nowhere is warned about with the nearest names, and a path-like name never reads a folder', async ($, on) => {
   const fake = fakeEngine(on, { '/skills/mk/ad-creative/SKILL.md': ADS_SKILL, '/x/SKILL.md': 'OUTSIDE TEXT' })
 
   const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'haiku:low+ads-creative haiku:low+../../x skills=/skills/mk -- q' })
@@ -261,7 +217,7 @@ test('a skill found nowhere is warned about with the nearest names, and a path-l
   expect(fake.spawns.join('')).not.toContain('OUTSIDE TEXT')
 })
 
-test('a preset is saved, listed, run, refused a second time without force, and deleted', { options: { save: 'off' } }, async ($, on) => {
+test('a preset is saved, listed, run, refused a second time without force, and deleted', async ($, on) => {
   const fake = fakeEngine(on, { '/skills/mk/ads/SKILL.md': ADS_SKILL })
 
   const saved = await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'save content-council skills=/skills/mk haiku:low+ads haiku:medium:contrarian' })
@@ -288,7 +244,7 @@ test('a preset is saved, listed, run, refused a second time without force, and d
   expect((await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'delete quick' })).text).toContain('built-in preset')
 })
 
-test('bad preset saves are refused and write nothing', { options: { save: 'off' } }, async ($, on) => {
+test('bad preset saves are refused and write nothing', async ($, on) => {
   const fake = fakeEngine(on)
   const save = async (args: string) => (await $.command.run({ ...COMMAND, command: 'panel-preset', args: `save ${args}` })).text
 
@@ -304,7 +260,7 @@ test('bad preset saves are refused and write nothing', { options: { save: 'off' 
   expect(await save('team haiku:low scope=project')).toContain(`Saved preset "team" in ${PROJECT_PRESETS}`)
 })
 
-test('a project file wins over the user file but cannot replace a built-in or supply skill folders', { options: { save: 'off' } }, async ($, on) => {
+test('a project file wins over the user file but cannot replace a built-in or supply skill folders', async ($, on) => {
   const fake = fakeEngine(on, {
     [USER_PRESETS]: JSON.stringify({ team: ['haiku:low'], Loud: ['haiku:low'] }),
     [PROJECT_PRESETS]: JSON.stringify({
@@ -331,7 +287,7 @@ test('a project file wins over the user file but cannot replace a built-in or su
   expect(fake.spawns[5]).not.toContain('REPO TEXT')
 })
 
-test('a presets file that does not parse is reported by path and never overwritten', { options: { save: 'off' } }, async ($, on) => {
+test('a presets file that does not parse is reported by path and never overwritten', async ($, on) => {
   const fake = fakeEngine(on, { [USER_PRESETS]: '{ "team": [' })
 
   const refused = (await $.command.run({ ...COMMAND, command: 'panel', args: 'team -- q' })).text
@@ -344,7 +300,7 @@ test('a presets file that does not parse is reported by path and never overwritt
   expect(fake.spawns).toHaveLength(0)
 })
 
-test('as= saves the seats of a run that passes every check, and only then', { options: { save: 'off' } }, async ($, on) => {
+test('as= saves the seats of a run that passes every check, and only then', async ($, on) => {
   const fake = fakeEngine(on)
   const panel = async (args: string) => (await $.command.run({ ...COMMAND, command: 'panel', args })).text
 
@@ -359,7 +315,7 @@ test('as= saves the seats of a run that passes every check, and only then', { op
   expect(await panel('haiku:low as=mini -- q')).toContain('A preset named "mini" exists.')
 })
 
-test('a preset supplies the brief to /panel and the rounds to /pingpong, and the command line wins', { options: { save: 'off' } }, async ($, on) => {
+test('a preset supplies the brief to /panel and the rounds to /pingpong, and the command line wins', async ($, on) => {
   fakeEngine(on, { [USER_PRESETS]: JSON.stringify({ rev: { seats: ['haiku:low', 'haiku:medium'], brief: 'bughunt', rounds: 3 } }) })
 
   expect((await $.command.run({ ...COMMAND, command: 'panel', args: 'rev -- the retry changes' })).text).toContain('brief "bughunt"')
@@ -370,7 +326,7 @@ test('a preset supplies the brief to /panel and the rounds to /pingpong, and the
   expect((await $.command.run({ ...COMMAND, command: 'pingpong', args: 'rev rounds=2 -- Plan it' })).text).toContain('2 round(s)')
 })
 
-test('the tools take fields, not options, and an unknown preset is denied with the known names', { options: { save: 'off' } }, async ($, on) => {
+test('the tools take fields, not options, and an unknown preset is denied with the known names', async ($, on) => {
   const fake = fakeEngine(on)
   const panel = async (input: Record<string, unknown>) => $.tool.call({ tool: 'mcp__agent-panel__panel', question: 'q', ...input } as never)
 
@@ -382,10 +338,10 @@ test('the tools take fields, not options, and an unknown preset is denied with t
   expect(Object.keys(fake.writes)).toHaveLength(0)
   expect(fake.spawns).toHaveLength(0)
 
-  expect((await panel({ seats: ['haiku:low'], save: 'off' })).result).toContain('started')
+  expect((await panel({ seats: ['haiku:low'] })).result).toContain('started')
 })
 
-test('the pane draws a card per run with its seats, on every surface', { options: { save: 'off' } }, async ($, on) => {
+test('the pane draws a card per run with its seats, on every surface', async ($, on) => {
   fakeEngine(on)
   await $.command.run({ ...COMMAND, command: 'panel', args: 'opus:xhigh sonnet:low:contrarian -- Why is the feed slow?' })
   await $.command.run({ ...COMMAND, command: 'pingpong', args: '-- Plan the billing migration' })
@@ -426,7 +382,7 @@ test('help output draws in colour while other command output keeps the engine ro
   await other.unmount()
 })
 
-test('a panel takes rounds from the command, states the cost, and opens no reply round when no seat answered', { options: { save: 'off' } }, async ($, on) => {
+test('a panel takes rounds from the command, states the cost, and opens no reply round when no seat answered', async ($, on) => {
   const fake = fakeEngine(on)
 
   const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'opus:high sonnet:high:contrarian rounds=3 -- Why is the feed slow?' })
@@ -439,7 +395,7 @@ test('a panel takes rounds from the command, states the cost, and opens no reply
   expect(fake.spawns[0]).not.toContain('Panel discussion')
 })
 
-test('a panel without rounds starts as before', { options: { save: 'off' } }, async ($, on) => {
+test('a panel without rounds starts as before', async ($, on) => {
   fakeEngine(on)
 
   const started = await $.command.run({ ...COMMAND, command: 'panel', args: 'opus:high sonnet:high -- Why is the feed slow?' })
@@ -448,7 +404,7 @@ test('a panel without rounds starts as before', { options: { save: 'off' } }, as
   expect(started.text).toContain('Results arrive as a new message when the agents finish.')
 })
 
-test('rounds on a one-seat panel are refused when typed and dropped with a note from a preset', { options: { save: 'off' } }, async ($, on) => {
+test('rounds on a one-seat panel are refused when typed and dropped with a note from a preset', async ($, on) => {
   const fake = fakeEngine(on, { [USER_PRESETS]: JSON.stringify({ solo: { seats: ['opus:high'], rounds: 2 }, pair: { seats: ['opus:high', 'sonnet:high'], rounds: 2 } }) })
 
   const typed = await $.command.run({ ...COMMAND, command: 'panel', args: 'opus:high rounds=2 -- Why?' })
@@ -467,7 +423,7 @@ test('rounds on a one-seat panel are refused when typed and dropped with a note 
   expect(single.text).not.toContain('up to')
 })
 
-test('the panel tool takes rounds as a field and refuses values outside 1 to 5', { options: { save: 'off' } }, async ($, on) => {
+test('the panel tool takes rounds as a field and refuses values outside 1 to 5', async ($, on) => {
   const fake = fakeEngine(on)
 
   const refused = await $.tool.call({ tool: 'mcp__agent-panel__panel', question: 'Why?', seats: ['opus:high', 'sonnet:high'], rounds: 9 })
@@ -478,7 +434,7 @@ test('the panel tool takes rounds as a field and refuses values outside 1 to 5',
   expect(JSON.stringify(started)).toContain('up to 2 rounds')
 })
 
-test('panel help lists rounds= and how to manage presets, and /panel-stop with nothing running says so', { options: { save: 'off' } }, async ($, on) => {
+test('panel help lists rounds= and how to manage presets, and /panel-stop with nothing running says so', async ($, on) => {
   fakeEngine(on)
 
   const help = (await $.command.run({ ...COMMAND, command: 'panel', args: 'help' })).text ?? ''
@@ -489,7 +445,7 @@ test('panel help lists rounds= and how to manage presets, and /panel-stop with n
   expect((await $.command.run({ ...COMMAND, command: 'panel-stop', args: 'zz' })).text).toBe('No run "zz" is in progress.')
 })
 
-test('a typo or a question without -- starts nothing and shows the help', { options: { save: 'off' } }, async ($, on) => {
+test('a typo or a question without -- starts nothing and shows the help', async ($, on) => {
   const fake = fakeEngine(on)
 
   const typo = (await $.command.run({ ...COMMAND, command: 'panel', args: 'hep' })).text ?? ''

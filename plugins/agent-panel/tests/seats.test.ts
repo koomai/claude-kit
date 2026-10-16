@@ -27,7 +27,6 @@ import {
   replyBrief,
   seatSpec,
   skillSummary,
-  soloBriefName,
   splitSections,
   splitSkill,
   standing,
@@ -85,14 +84,11 @@ test('agent type names separate skill sets and stay valid', () => {
   expect(/^[\w-]{1,64}$/.test(skilled)).toBe(true)
 })
 
-test('brief= and save= are read as options, and a bad save mode is reported', () => {
-  const parsed = parseArgs('review brief=BugHunt save=both -- the retry changes', FALLBACK_PRESETS)
+test('brief= is read as an option', () => {
+  const parsed = parseArgs('review brief=BugHunt -- the retry changes', FALLBACK_PRESETS)
   expect(parsed.brief).toBe('bughunt')
-  expect(parsed.save).toBe('both')
   expect(parsed.seats).toHaveLength(3)
   expect(parsed.question).toBe('the retry changes')
-
-  expect(parseArgs('save=cloud -- q', FALLBACK_PRESETS).errors).toEqual(['"save=cloud": save must be one of off, files, solo, both.'])
 })
 
 test('only PASS alone on the first line ends the rounds', () => {
@@ -121,13 +117,6 @@ test('each saved answer is named for its place in the run', () => {
   expect(artifactOf({ kind: 'pingpong', phase: 'drafting', round: 0, rounds: 2, seats }, 0).file).toBe('draft-a-opus-xhigh')
   expect(artifactOf({ kind: 'pingpong', phase: 'challenging', round: 2, rounds: 2, seats }, 0).file).toBe('round-2-challenge')
   expect(artifactOf({ kind: 'pingpong', phase: 'integrating', round: 2, rounds: 2, seats }, 1).file).toBe('round-2-plan')
-})
-
-test('a Solo template is a brief only under the brief- prefix', () => {
-  expect(soloBriefName('brief-pq - Performance and Queries')).toBe('pq')
-  expect(soloBriefName('Brief-Bug-Hunt: correctness')).toBe('bug-hunt')
-  expect(soloBriefName('PQ - Performance and Queries')).toBe(undefined)
-  expect(soloBriefName('brief-')).toBe(undefined)
 })
 
 test('git is limited to read commands that cannot write a file', () => {
@@ -211,10 +200,10 @@ test('a preset is written as a plain list unless it carries options', () => {
   expect(presetNameError('save')).toBe('"save" is reserved.')
 })
 
-test('tool input becomes arguments only from a preset name, seats, a brief name and a save mode', () => {
-  expect(toolArgs({ preset: 'Quick', seats: ['opus:high'], brief: 'bughunt', save: 'off' })).toEqual({ args: 'Quick opus:high brief=bughunt save=off' })
+test('tool input becomes arguments only from a preset name, seats, and a brief name', () => {
+  expect(toolArgs({ preset: 'Quick', seats: ['opus:high'], brief: 'bughunt' })).toEqual({ args: 'Quick opus:high brief=bughunt' })
   expect(toolArgs({})).toEqual({ args: '' })
-  for (const input of [{ seats: ['as=x'] }, { seats: 'opus:high' }, { preset: 'a b' }, { preset: 'skills=/' }, { brief: 'x -- y' }, { save: 'cloud' }]) {
+  for (const input of [{ seats: ['as=x'] }, { seats: 'opus:high' }, { preset: 'a b' }, { preset: 'skills=/' }, { brief: 'x -- y' }]) {
     expect('error' in toolArgs(input)).toBe(true)
   }
 })

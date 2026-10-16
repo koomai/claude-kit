@@ -1,4 +1,4 @@
-import type { Preset, PresetMap, PresetSource, Role, RoundEntry, RoundState, Run, SaveMode, Seat } from '../types'
+import type { Preset, PresetMap, PresetSource, Role, RoundEntry, RoundState, Run, Seat } from '../types'
 import type { Guide } from './design'
 
 export const MODELS: Record<string, string> = {
@@ -12,15 +12,10 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
 export const MAX_ROUNDS = 5
 
-export const SAVE_MODES = ['off', 'files', 'solo', 'both'] as const
 
-export const SOLO_BRIEF_PREFIX = 'brief-'
 
 export const GIT_COMMANDS = ['status', 'diff', 'log', 'show', 'blame'] as const
 
-export function isSaveMode(value: string): value is SaveMode {
-  return (SAVE_MODES as readonly string[]).includes(value)
-}
 
 const SEAT = /^(opus|sonnet|haiku|fable):(low|medium|high|xhigh|max)(?::(panelist|contrarian))?((?:\+[\w:./-]+)*)$/i
 const MISPLACED_SKILL = /^((?:opus|sonnet|haiku|fable):(?:low|medium|high|xhigh|max)):([\w./-]+)$/i
@@ -120,7 +115,6 @@ export type ParsedArgs = {
   seats: Seat[]
   rounds?: number
   brief?: string
-  save?: SaveMode
   as?: string
   skillDirs: string[]
   presets: string[]
@@ -150,7 +144,6 @@ export function parseArgs(args: string, presets: PresetMap): ParsedArgs {
 
     const roundsMatch = /^rounds=(\d+)$/i.exec(token)
     const briefMatch = /^brief=([\w.-]+)$/i.exec(token)
-    const saveMatch = /^save=(\w+)$/i.exec(token)
     const asMatch = /^as=(.+)$/i.exec(token)
     const skillsMatch = /^skills=(.+)$/i.exec(token)
     const misplaced = MISPLACED_SKILL.exec(token)
@@ -163,10 +156,6 @@ export function parseArgs(args: string, presets: PresetMap): ParsedArgs {
       else parsed.rounds = Number(roundsMatch[1])
     } else if (briefMatch?.[1]) {
       parsed.brief = briefMatch[1].toLowerCase()
-    } else if (saveMatch?.[1]) {
-      const mode = saveMatch[1].toLowerCase()
-      if (isSaveMode(mode)) parsed.save = mode
-      else errors.push(`"${token}": save must be one of ${SAVE_MODES.join(', ')}.`)
     } else if (asMatch?.[1]) {
       const error = presetNameError(asMatch[1])
       if (error) errors.push(`"${token}": ${error}`)
@@ -202,18 +191,17 @@ export function parseArgs(args: string, presets: PresetMap): ParsedArgs {
   return parsed
 }
 
-export type ToolInput = { preset?: unknown; seats?: unknown; brief?: unknown; save?: unknown }
+export type ToolInput = { preset?: unknown; seats?: unknown; brief?: unknown }
 
 export function toolArgs(input: ToolInput): { args: string } | { error: string } {
-  const { preset, seats = [], brief, save } = input
+  const { preset, seats = [], brief } = input
   if (preset !== undefined && (typeof preset !== 'string' || !PRESET_NAME.test(preset.toLowerCase()))) return { error: 'preset must be the name of one preset.' }
   if (!isStrings(seats)) return { error: 'seats must be a list of strings.' }
   const badSeat = seats.find(spec => parseSeat(spec) === undefined)
   if (badSeat !== undefined) return { error: `"${badSeat}" is not a seat. Use model:effort[:contrarian][+skill], e.g. opus:xhigh.` }
   if (brief !== undefined && (typeof brief !== 'string' || !BRIEF_NAME.test(brief))) return { error: 'brief must be the name of one brief.' }
-  if (save !== undefined && (typeof save !== 'string' || !isSaveMode(save))) return { error: `save must be one of ${SAVE_MODES.join(', ')}.` }
 
-  return { args: [preset ?? '', ...seats, brief === undefined ? '' : `brief=${brief}`, save === undefined ? '' : `save=${save}`].filter(Boolean).join(' ') }
+  return { args: [preset ?? '', ...seats, brief === undefined ? '' : `brief=${brief}`].filter(Boolean).join(' ') }
 }
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
@@ -393,13 +381,6 @@ export function artifactOf(run: Pick<Run, 'kind' | 'phase' | 'round' | 'rounds' 
   if (run.phase === 'challenging') return { file: `round-${run.round}-challenge`, title: `Round ${run.round} challenge (${label})` }
 
   return { file: `round-${run.round}-plan`, title: `Round ${run.round} revised plan (${label})` }
-}
-
-export function soloBriefName(templateName: string): string | undefined {
-  const lower = templateName.trim().toLowerCase()
-  if (!lower.startsWith(SOLO_BRIEF_PREFIX)) return undefined
-
-  return lower.slice(SOLO_BRIEF_PREFIX.length).split(/[\s:]/, 1)[0] || undefined
 }
 
 export function gitRefusal(command: string, args: readonly unknown[]): string | undefined {
@@ -752,7 +733,7 @@ ${seatList(run.seats)}`
   const transcript = run.transcript ?? []
   const max = Math.min(PEER_ANSWER_MAX, Math.floor(SYNTHESIS_BUDGET / Math.max(1, run.seats.length * transcript.length)))
   const isCut = transcript.some(entries => entries.some(entry => entry.state === 'answered' && entry.text.length > max))
-  const whole = run.dir !== undefined ? `in ${run.dir}` : run.scratchpadTitle !== undefined ? `in the Solo scratchpad "${run.scratchpadTitle}"` : 'not saved'
+  const whole = run.dir !== undefined ? `in ${run.dir}` : 'not saved'
   const didIn = (entry: RoundEntry | undefined, round: number) => {
     if (entry?.state !== 'answered') return DID[entry?.state ?? 'absent']
     if (round === 0) return 'answered'

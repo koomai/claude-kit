@@ -36,7 +36,6 @@ export type Preset = {
 export type PresetMap = Record<string, Preset>
 
 export type RunKind = 'panel' | 'pingpong'
-export type SaveMode = 'off' | 'files' | 'solo' | 'both'
 export type Phase = 'drafting' | 'discussing' | 'merging' | 'challenging' | 'integrating' | 'done' | 'failed'
 export type RoundState = 'answered' | 'unchanged' | 'failed' | 'interrupted' | 'absent'
 export type RoundEntry = { state: RoundState; text: string; isMoved?: boolean }
@@ -58,8 +57,6 @@ export type Run = {
   brief?: string
   dir?: string
   page?: string
-  scratchpadId?: number
-  scratchpadTitle?: string
   saveNote?: string
   notes?: string[]
   warnings?: string[]

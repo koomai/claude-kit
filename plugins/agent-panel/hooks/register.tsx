@@ -1,16 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import type { FolderSkill, Phase, PresetMap, RoundEntry, Run, RunKind, SaveMode, Seat } from '../types'
+import type { FolderSkill, Phase, PresetMap, RoundEntry, Run, RunKind, Seat } from '../types'
 import {
   EFFORTS,
   FALLBACK_PRESETS,
   GIT_COMMANDS,
   MAX_ROUNDS,
   MODELS,
-  SAVE_MODES,
   SEAT_SYSTEM_PROMPT,
-  SOLO_BRIEF_PREFIX,
   agentTypeName,
   answers,
   artifactOf,
@@ -25,7 +23,6 @@ import {
   integrateBrief,
   isFolderSkillName,
   isPass,
-  isSaveMode,
   nearestNames,
   panelBrief,
   panelSynthesis,
@@ -40,7 +37,6 @@ import {
   seatSpec,
   skillSummary,
   slugify,
-  soloBriefName,
   splitSkill,
   toolArgs,
   withSkills,
@@ -68,16 +64,12 @@ const DEFAULT_RUNS_DIR = '~/.claude/agent-panel/runs'
 const PRESETS_PATH = '.claude/agent-panel/presets.json'
 const DESIGN_PATH = '.claude/agent-panel/design.md'
 
-type Config = { save: SaveMode; soloBriefs: boolean; runsDir: string; skillDirs: string[] }
+type Config = { runsDir: string; skillDirs: string[] }
 type BriefEntry = { name: string; source: string; summary: string }
 type BriefFolder = { path: string; source: string }
 
 function readConfig(options: PluginOptions): Config {
-  const save = String(options.save ?? '')
-
   return {
-    save: isSaveMode(save) ? save : 'files',
-    soloBriefs: options.soloBriefs === true,
     runsDir: typeof options.runsDir === 'string' && options.runsDir !== '' ? options.runsDir : DEFAULT_RUNS_DIR,
     skillDirs: typeof options.skillDirs === 'string' ? options.skillDirs.split(',').map(dir => dir.trim()).filter(Boolean) : [],
   }
@@ -87,11 +79,10 @@ const runs = atom({ plugin: 'agent-panel', key: 'runs' } as const, [] as Run[])
 
 const HELP_ARGS = ['', 'help', '--help']
 const PRESET_INPUT = { type: 'string', description: 'The name of one preset in place of seats: deep, quick, duo, review, or one the user saved with /panel-preset' }
-const SAVE_INPUT = { type: 'string', enum: [...SAVE_MODES], description: 'Where the answers are kept for this run, over the user setting; leave out unless the user asks' }
 
 const SEAT_OPTIONS = `  model        ${Object.keys(MODELS).join(', ')}
   effort       ${EFFORTS.join(', ')}
-  +skill       loads a skill into the seat: a folder under skills= or the "Skill folders" setting, else a session skill by the name /skills shows; repeat for more`
+  +skill       loads a skill into the seat: a folder under skills= or the "Default skill folders" setting, else a session skill by the name /skills shows; repeat for more`
 
 function presetLines(presets: PresetMap, seatCount?: number): string {
   return Object.entries(presets)
@@ -122,12 +113,11 @@ function briefLines(briefs: BriefEntry[]): string {
   return briefs.map(brief => `  ${brief.name.padEnd(12)} ${brief.source.padEnd(9)} ${brief.summary.slice(0, 70)}`).join('\n')
 }
 
-const SAVE_OPTION = `  save=mode    ${SAVE_MODES.join(', ')}: where the answers are kept for this run, over the "Save answers" setting
-  skills=dir   folders of <skill>/SKILL.md for this run's +skill names, comma separated
+const RUN_OPTIONS = `  skills=dir   folders of <skill>/SKILL.md for this run's +skill names, comma separated
   as=name      also saves this run's seats and options as a preset of that name`
 
 function panelUsage(loaded: Loaded, briefs: BriefEntry[]): string {
-  return `Usage: /panel [seats or preset] [rounds=N] [brief=name] [save=mode] [skills=dir] [as=name] -- <question>
+  return `Usage: /panel [seats or preset] [rounds=N] [brief=name] [skills=dir] [as=name] -- <question>
 
 Seats, space separated: model:effort[:contrarian][+skill]
 ${SEAT_OPTIONS}
@@ -135,7 +125,7 @@ ${SEAT_OPTIONS}
   brief=name   every seat reviews what you name through that brief
   rounds=N     rounds, 1 to ${MAX_ROUNDS} (no rounds: 1); round 1 is independent, in each later round every seat
                reads the others and replies; 2 is usual; a round where no seat changes anything ends it
-${SAVE_OPTION}
+${RUN_OPTIONS}
 
 Presets (no seats: "quick")
 ${presetLines(loaded.presets)}
@@ -143,8 +133,7 @@ ${presetHelp(loaded.presets)}
 ${noticeLines(loaded.notices)}
 Briefs
 ${briefLines(briefs)}
-  Add your own as .claude/agent-panel/briefs/<name>.md in the project or under your home folder,
-  or as a Solo prompt template named ${SOLO_BRIEF_PREFIX}<name> with the "Solo briefs" setting on.
+  Add your own as .claude/agent-panel/briefs/<name>.md in the project or under your home folder.
 
 Examples
   /panel -- Is the retry in the queue worker safe?
@@ -158,12 +147,12 @@ Examples
 }
 
 function pingpongUsage(loaded: Loaded): string {
-  return `Usage: /pingpong [two seats or preset] [rounds=N] [save=mode] [skills=dir] [as=name] -- <task>
+  return `Usage: /pingpong [two seats or preset] [rounds=N] [skills=dir] [as=name] -- <task>
 
 Two seats, space separated: model:effort[+skill]. The first challenges, the second integrates.
 ${SEAT_OPTIONS}
   rounds=N     challenge rounds, 1 to ${MAX_ROUNDS} (no rounds: 1); a challenger with nothing material to raise ends them early
-${SAVE_OPTION}
+${RUN_OPTIONS}
 
 Two-seat presets (no seats: "duo")
 ${presetLines(loaded.presets, 2)}
@@ -313,14 +302,6 @@ function skillLines(seats: readonly Seat[]): string[] {
   ])
 }
 
-async function solo($: $, tool: string, args: Record<string, unknown>): Promise<unknown> {
-  const result = await $.mcp.call('solo', tool, args)
-  const text = result.content.map(block => block.text ?? '').join('')
-  if (result.isError) throw new Error(text || `Solo ${tool} failed`)
-
-  return JSON.parse(text)
-}
-
 async function briefFolders($: $): Promise<BriefFolder[]> {
   const home = await $.env.get('HOME').catch(() => undefined)
 
@@ -351,48 +332,24 @@ async function folderBriefs($: $, folder: BriefFolder): Promise<BriefEntry[]> {
   )
 }
 
-async function soloBriefs($: $): Promise<(BriefEntry & { id: number })[]> {
-  const templates = (await solo($, 'list_prompt_templates', { query: SOLO_BRIEF_PREFIX })) as { id: number; name: string; description?: string }[]
-
-  return templates.flatMap(template => {
-    const name = soloBriefName(template.name)
-
-    return name === undefined ? [] : [{ id: template.id, name, source: 'solo', summary: template.description ?? '' }]
-  })
-}
-
-async function loadSoloBrief($: $, name: string): Promise<string | undefined> {
-  try {
-    const match = (await soloBriefs($)).find(brief => brief.name === name)
-    if (!match) return undefined
-    const template = (await solo($, 'get_prompt_template', { template_id: match.id })) as { body?: string }
-
-    return template.body?.trim() || undefined
-  } catch {
-    return undefined
-  }
-}
-
-async function loadBrief($: $, name: string, config: Config): Promise<string | undefined> {
+async function loadBrief($: $, name: string): Promise<string | undefined> {
   for (const folder of await briefFolders($)) {
     const text = await readBriefFile($, folder.path, name)
     if (text !== undefined) return text
   }
-  const fromSolo = config.soloBriefs ? await loadSoloBrief($, name) : undefined
 
-  return fromSolo ?? readBriefFile($, `${$.plugin.root}/briefs`, name)
+  return readBriefFile($, `${$.plugin.root}/briefs`, name)
 }
 
-async function listBriefs($: $, config: Config): Promise<BriefEntry[]> {
+async function listBriefs($: $): Promise<BriefEntry[]> {
   const own = await Promise.all((await briefFolders($)).map(folder => folderBriefs($, folder)))
-  const fromSolo = config.soloBriefs ? await soloBriefs($).catch(() => []) : []
   const builtIn = await folderBriefs($, { path: `${$.plugin.root}/briefs`, source: 'built-in' })
   const seen = new Set<string>()
 
-  return [...own.flat(), ...fromSolo, ...builtIn].filter(brief => !seen.has(brief.name) && seen.add(brief.name))
+  return [...own.flat(), ...builtIn].filter(brief => !seen.has(brief.name) && seen.add(brief.name))
 }
 
-async function openRecord($: $, run: Run, save: SaveMode, config: Config): Promise<Partial<Run>> {
+async function openRecord($: $, run: Run, config: Config): Promise<Partial<Run>> {
   const kind = run.kind === 'panel' ? 'Panel' : 'Ping-pong'
   const brief = run.brief === undefined ? '' : `, brief "${run.brief}"`
   const rounds = run.kind === 'panel' && run.rounds > 1 ? `, up to ${run.rounds} rounds` : ''
@@ -400,35 +357,17 @@ async function openRecord($: $, run: Run, save: SaveMode, config: Config): Promi
   const record: Partial<Run> = {}
   const notes: string[] = []
 
-  if (save === 'files' || save === 'both') {
-    try {
-      const home = await $.env.get('HOME')
-      const root = config.runsDir.startsWith('~') && home !== undefined ? `${home}${config.runsDir.slice(1)}` : config.runsDir
-      const project = (await $.session.root()).split(/[\\/]/).filter(Boolean).pop() ?? 'project'
-      const day = new Date(await $.clock.now()).toISOString().slice(0, 10)
-      const dir = `${root}/${slugify(project)}/${day}-${run.id}-${slugify(run.question)}`
-      await $.fs.write(`${dir}/question.md`, header)
-      record.dir = dir
-      record.page = `${dir}/discussion.html`
-    } catch (error) {
-      notes.push(`The answers are not being saved to files: ${reason(error)}`)
-    }
-  }
-
-  if (save === 'solo' || save === 'both') {
-    try {
-      const name = `${kind} ${run.id}: ${run.question.replace(/\s+/g, ' ').slice(0, 60)}`
-      const created = (await solo($, 'scratchpad_write', { name, content: header, tags: [PLUGIN, run.kind] })) as { scratchpad_id: number; revision: number }
-      const numbered = `${created.scratchpad_id}. ${name}`
-      const isRenamed = await solo($, 'scratchpad_rename', { scratchpad_id: created.scratchpad_id, name: numbered, expected_revision: created.revision }).then(
-        () => true,
-        () => false,
-      )
-      record.scratchpadId = created.scratchpad_id
-      record.scratchpadTitle = isRenamed ? numbered : name
-    } catch (error) {
-      notes.push(`The answers are not being saved to a Solo scratchpad: ${reason(error)}`)
-    }
+  try {
+    const home = await $.env.get('HOME')
+    const root = config.runsDir.startsWith('~') && home !== undefined ? `${home}${config.runsDir.slice(1)}` : config.runsDir
+    const project = (await $.session.root()).split(/[\\/]/).filter(Boolean).pop() ?? 'project'
+    const day = new Date(await $.clock.now()).toISOString().slice(0, 10)
+    const dir = `${root}/${slugify(project)}/${day}-${run.id}-${slugify(run.question)}`
+    await $.fs.write(`${dir}/question.md`, header)
+    record.dir = dir
+    record.page = `${dir}/discussion.html`
+  } catch (error) {
+    notes.push(`The answers are not being saved to files: ${reason(error)}`)
   }
 
   if (notes.length > 0) record.saveNote = notes.join('\n')
@@ -440,11 +379,6 @@ async function saveArtifact($: $, run: Run, file: string, title: string, text: s
   const failures: string[] = []
   if (run.dir !== undefined) {
     await $.fs.write(`${run.dir}/${file}.md`, `# ${title}\n\n${text}\n`).catch(error => failures.push(`"${title}" was not written to a file: ${reason(error)}`))
-  }
-  if (run.scratchpadId !== undefined) {
-    await solo($, 'scratchpad_append', { scratchpad_id: run.scratchpadId, content: `\n## ${title}\n\n${text}\n` }).catch(error =>
-      failures.push(`"${title}" was not added to the Solo scratchpad: ${reason(error)}`),
-    )
   }
   if (failures.length === 0) return
 
@@ -657,7 +591,6 @@ function savedLines(run: Run): string[] {
   return [
     run.dir === undefined ? '' : `The answers are saved in ${run.dir}`,
     run.page === undefined ? '' : `The ${run.kind === 'panel' ? 'discussion' : 'plan'} page is ${fileUrl(run.page)}`,
-    run.scratchpadTitle === undefined ? '' : `The answers are saved in the Solo scratchpad "${run.scratchpadTitle}"`,
     run.saveNote ?? '',
   ].filter(Boolean)
 }
@@ -757,7 +690,7 @@ async function askSeat($: $, run: Run, index: number): Promise<void> {
   await spawnSeat($, run, index, replyBrief(run, index, false))
 }
 
-type Launch = { seats: Seat[]; question: string; rounds: number; save: SaveMode; brief?: { name: string; text: string }; notes: string[]; warnings: string[] }
+type Launch = { seats: Seat[]; question: string; rounds: number; brief?: { name: string; text: string }; notes: string[]; warnings: string[] }
 
 async function startRun($: $, kind: RunKind, launch: Launch, config: Config): Promise<Run> {
   const { seats, question, rounds, brief } = launch
@@ -775,7 +708,7 @@ async function startRun($: $, kind: RunKind, launch: Launch, config: Config): Pr
     ...(launch.notes.length === 0 ? {} : { notes: launch.notes }),
     ...(launch.warnings.length === 0 ? {} : { warnings: launch.warnings }),
   }
-  const run = { ...opened, ...(await openRecord($, opened, launch.save, config)) }
+  const run = { ...opened, ...(await openRecord($, opened, config)) }
   await update($, runs, list => [...list, run].slice(-10))
   await writePage($, run.id)
   void $.ui.open({ id: PANE, title: 'Agent panel' })
@@ -1013,7 +946,6 @@ function prepare(kind: RunKind, args: string, loaded: Loaded, rounds?: number) {
     question: parsed.question,
     rounds: isAlone ? 1 : (chosenRounds ?? 1),
     brief,
-    save: parsed.save,
     skillDirs,
     preset: parsed.as === undefined ? undefined : { name: parsed.as, entry: presetFrom(parsed.seats, brief, chosenRounds, skillDirs) },
     notes,
@@ -1024,7 +956,7 @@ function prepare(kind: RunKind, args: string, loaded: Loaded, rounds?: number) {
 async function usage($: $, kind: RunKind, config: Config): Promise<string> {
   const loaded = await loadPresets($)
 
-  return kind === 'panel' ? panelUsage(loaded, await listBriefs($, config)) : pingpongUsage(loaded)
+  return kind === 'panel' ? panelUsage(loaded, await listBriefs($)) : pingpongUsage(loaded)
 }
 
 async function launch($: $, kind: RunKind, args: string, config: Config, rounds?: number): Promise<{ errors: string[] } | { started: string }> {
@@ -1032,9 +964,9 @@ async function launch($: $, kind: RunKind, args: string, config: Config, rounds?
   const prepared = prepare(kind, args, loaded, rounds)
   if (prepared.errors.length > 0) return { errors: [...prepared.errors, ...loaded.notices] }
 
-  const text = prepared.brief === undefined ? undefined : await loadBrief($, prepared.brief, config)
+  const text = prepared.brief === undefined ? undefined : await loadBrief($, prepared.brief)
   if (prepared.brief !== undefined && text === undefined) {
-    const known = (await listBriefs($, config)).map(brief => brief.name).join(', ')
+    const known = (await listBriefs($)).map(brief => brief.name).join(', ')
 
     return { errors: [`No brief named "${prepared.brief}". Known briefs: ${known || 'none'}.`] }
   }
@@ -1056,7 +988,6 @@ async function launch($: $, kind: RunKind, args: string, config: Config, rounds?
     seats: resolved.seats,
     question: prepared.question,
     rounds: prepared.rounds,
-    save: prepared.save ?? config.save,
     ...(prepared.brief !== undefined && text !== undefined ? { brief: { name: prepared.brief, text } } : {}),
     notes,
     warnings: resolved.warnings,
@@ -1092,11 +1023,11 @@ const PRESET_USAGE = `Usage: /panel-preset save <name> <seats or presets> [brief
 
 A preset is a named set of seats: run it as /panel <name> -- <question> or /pingpong <name> -- <task>.
   save       writes to ~/${PRESETS_PATH}; scope=project writes to ${PRESETS_PATH} in this project
-  skills=    folders of <skill>/SKILL.md the preset's +skill names load from, ahead of the "Skill folders" setting and the session's skills
+  skills=    folders of <skill>/SKILL.md the preset's +skill names load from, ahead of the "Default skill folders" setting and the session's skills
   brief=     the brief /panel uses with this preset; brief= on the command still wins
   rounds=    under /panel the total rounds, the first independent; under /pingpong the challenge rounds; rounds= on the command still wins
   force      replaces a preset of the same name in that file
-  skills     lists what the "Skill folders" setting and your presets' folders offer
+  skills     lists what the "Default skill folders" setting and your presets' folders offer
 
 A project file cannot replace a built-in preset or carry skill folders. as=<name> on /panel or /pingpong saves the seats of a run.
 
@@ -1177,10 +1108,10 @@ async function savePreset($: $, name: string, words: readonly string[], config: 
   if (scope === undefined) errors.push('scope must be user or project.')
   if (parsed.question !== '') errors.push(`"${parsed.question}" is not a seat, a preset or an option.`)
   if (parsed.seats.length === 0) errors.push('Give at least one seat.')
-  if (parsed.save !== undefined || parsed.as !== undefined) errors.push('save= and as= belong on /panel and /pingpong.')
-  if (scope === 'project' && skillDirs.length > 0) errors.push('A project preset cannot carry skill folders, since a repository could then feed its own text to the seats. Put the folder in the "Skill folders" setting, or save without scope=project.')
+  if (parsed.as !== undefined) errors.push('as= belongs on /panel and /pingpong.')
+  if (scope === 'project' && skillDirs.length > 0) errors.push('A project preset cannot carry skill folders, since a repository could then feed its own text to the seats. Put the folder in the "Default skill folders" setting, or save without scope=project.')
   if (scope === 'project' && Object.hasOwn(loaded.builtIn, name)) errors.push(`A project preset cannot be named "${name}": that is a built-in.`)
-  if (brief !== undefined && (await loadBrief($, brief, config)) === undefined) errors.push(`No brief named "${brief}".`)
+  if (brief !== undefined && (await loadBrief($, brief)) === undefined) errors.push(`No brief named "${brief}".`)
   if (errors.length > 0 || scope === undefined) return `${errors.join('\n')}\n\n${PRESET_USAGE}`
 
   const saved = await changePresets($, scope, (file, path) => {
@@ -1205,7 +1136,7 @@ async function savePreset($: $, name: string, words: readonly string[], config: 
 async function listSkills($: $, filter: string, config: Config): Promise<string> {
   const loaded = await loadPresets($)
   const roots = await skillRoots($, [...config.skillDirs, ...Object.values(loaded.presets).flatMap(preset => preset.skillDirs ?? [])])
-  if (roots.length === 0) return 'No skill folders are set. Add one to the "Skill folders" setting under /config, or pass skills=<folder> to /panel-preset save.'
+  if (roots.length === 0) return 'No skill folders are set. Add one to the "Default skill folders" setting under /config, or pass skills=<folder> to /panel-preset save.'
 
   const blocks = await Promise.all(
     roots.map(async root => {
@@ -1413,7 +1344,6 @@ function drawCard(kit: Kit, run: Run, now: number, width: number, rows: number, 
           <Text bold color="suggestion" underline>{run.page === undefined ? 'Open the answers folder' : run.kind === 'panel' ? 'Open the discussion page' : 'Open the plan page'}</Text>
         </Button>
       )}
-      {run.scratchpadTitle === undefined ? null : <Text dimColor>{clip(`▤ ${run.scratchpadTitle}`, inner)}</Text>}
       {run.saveNote === undefined ? null : <Text color="warning">{clip(`⚠ ${run.saveNote}`, inner)}</Text>}
     </Box>
   )
@@ -1483,13 +1413,13 @@ export const register: Register = (on, options) => {
     await $.tool.register({
       name: 'panel',
       description: 'Ask several read-only Claude subagents the same question independently, each at its own model and effort. Use when the user asks for an agent panel or several opinions. Write a self-contained question with the facts they need. Set rounds above 1 only when the user asks for a discussion or debate: every extra round runs every seat again, each reading the others and replying. Returns at once; the answers arrive later as a new message for you to synthesise.',
-      inputSchema: { type: 'object', properties: { question: { type: 'string' }, seats: seatSchema, preset: PRESET_INPUT, save: SAVE_INPUT, rounds: { type: 'number', minimum: 1, maximum: MAX_ROUNDS }, brief: { type: 'string', description: 'A review brief by name that every seat applies to the question, e.g. "bughunt", "security", "regression", "contracts"; the question then names what to review' } }, required: ['question'] },
+      inputSchema: { type: 'object', properties: { question: { type: 'string' }, seats: seatSchema, preset: PRESET_INPUT, rounds: { type: 'number', minimum: 1, maximum: MAX_ROUNDS }, brief: { type: 'string', description: 'A review brief by name that every seat applies to the question, e.g. "bughunt", "security", "regression", "contracts"; the question then names what to review' } }, required: ['question'] },
       isDeferred: false,
     })
     await $.tool.register({
       name: 'pingpong',
       description: 'Ping-pong planning: two read-only Claude subagents each draft a plan, you merge them, then each round the first challenges the plan and the second integrates the supported corrections. Use when the user asks for ping-pong planning. Write a self-contained task brief. Returns at once; the drafts arrive later as a new message.',
-      inputSchema: { type: 'object', properties: { task: { type: 'string' }, seats: { ...seatSchema, minItems: 2, maxItems: 2 }, preset: PRESET_INPUT, save: SAVE_INPUT, rounds: { type: 'number', minimum: 1, maximum: MAX_ROUNDS } }, required: ['task'] },
+      inputSchema: { type: 'object', properties: { task: { type: 'string' }, seats: { ...seatSchema, minItems: 2, maxItems: 2 }, preset: PRESET_INPUT, rounds: { type: 'number', minimum: 1, maximum: MAX_ROUNDS } }, required: ['task'] },
       isDeferred: false,
     })
     await $.tool.register({
@@ -1581,7 +1511,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong' }, async ($, e) => {
     const input = e as unknown as ToolInput & { task: string; rounds?: number }
-    const built = toolArgs({ preset: input.preset, seats: input.seats, save: input.save })
+    const built = toolArgs({ preset: input.preset, seats: input.seats })
     if ('error' in built) return { deny: built.error }
     const launched = await launch($, 'pingpong', `${built.args} -- ${input.task}`, config, input.rounds)
 

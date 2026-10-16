@@ -37,7 +37,7 @@ Do these steps in a Claude Code terminal session:
 2. Type `y` to add the marketplace.
 3. Select a scope.
 
-The plugin needs only Claude Code. To save answers to a [Solo](https://soloterm.com) scratchpad, you also need the Solo MCP server.
+The plugin needs only Claude Code.
 
 ## Instructions for Claude
 
@@ -75,8 +75,8 @@ You cannot type slash commands. To start a run, use the tools of the plugin:
 
 | Tool | Required field | Optional fields |
 | --- | --- | --- |
-| `panel` | `question` | `seats`, `preset`, `rounds`, `brief`, `save` |
-| `pingpong` | `task` | `seats` (two), `preset`, `rounds`, `save` |
+| `panel` | `question` | `seats`, `preset`, `rounds`, `brief` |
+| `pingpong` | `task` | `seats` (two), `preset`, `rounds` |
 
 Write the question or the task so that a seat can understand it without this conversation. Include the file paths and the facts that the seats need. Set `rounds` above 1 only when the user asks for a discussion.
 
@@ -114,7 +114,6 @@ Put the seats and options before `--`. Put the question or the task after `--`. 
 | --- | --- | --- |
 | `rounds=N` | both | Sets the number of rounds, from 1 to 5. The default is 1. For a panel, the number includes the first round. For a ping-pong, it is the number of challenge rounds. |
 | `brief=name` | `/panel` | All seats use this brief. |
-| `save=mode` | both | Sets where this run saves its answers: `off`, `files`, `solo` or `both`. This option overrides the "Save answers" setting for this run only. |
 | `skills=dir[,dir]` | both | The plugin looks for `+skill` names in these folders first. |
 | `as=name` | both | Saves the seats and options of this run as a preset with this name. |
 
@@ -136,7 +135,7 @@ If you do not give seats, `/panel` uses the `quick` preset and `/pingpong` uses 
 The plugin looks for a `+name` skill in these places, in this order:
 
 1. The folders in `skills=<folder>[,<folder>]` on the command, or the folders in the preset.
-2. The folders in the "Skill folders" setting.
+2. The folders in the "Default skill folders" setting.
 3. The skills of the session, by the name that `/skills` shows. Examples: `+laravel-php-standards`, `+plugin:skill`.
 
 A skill folder must directly contain `<name>/SKILL.md`. Thus, give the folder above the skills. For example, for `~/skills/marketing/ads/SKILL.md`, give `~/skills/marketing`. To see the skills in your folders, type `/panel-preset skills [filter]`.
@@ -161,8 +160,7 @@ The plugin uses the first brief that it finds, in this order:
 
 1. `.claude/agent-panel/briefs/<name>.md` in the project.
 2. `~/.claude/agent-panel/briefs/<name>.md`.
-3. A Solo prompt template with the name `brief-<name>`. The plugin looks for these only when the "Solo briefs" setting is on.
-4. The briefs of the plugin.
+3. The briefs of the plugin.
 
 ## Discussion rounds
 
@@ -228,7 +226,7 @@ The `≡ text` control at the top of the pane sets the number of lines of live t
 
 ## The discussion page
 
-Each `/panel` run that saves to files also writes a page, `discussion.html`, in its run folder. The plugin writes the page again each time a seat replies. If the page is open during the run, it loads again when a new reply arrives.
+Each `/panel` run also writes a page, `discussion.html`, in its run folder. The plugin writes the page again each time a seat replies. If the page is open during the run, it loads again when a new reply arrives.
 
 The page shows these parts, in this order:
 
@@ -307,14 +305,8 @@ To change a setting, type `/config`.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Save answers | `files` | Where the plugin saves answers: `files`, `solo` (one Solo scratchpad for each run), `both` or `off`. `save=<mode>` on a command overrides this setting for one run. |
-| Runs folder | `~/.claude/agent-panel/runs` | The folder for saved files. It has one folder for each project. Each project folder has one folder for each run. |
-| Skill folders | none | Folders that contain `<skill>/SKILL.md`. Separate the folders with commas. `+skill` looks in these folders. |
-| Solo briefs | off | When on, the plugin also reads briefs from Solo prompt templates with the name `brief-<name>`. |
-
-The `solo` and `both` modes need the Solo MCP server. If the server is not connected, the run continues. The start message then tells you that Solo did not get the answers.
-
-A run with `off` or `solo` does not save files. Thus, it has no page, and Claude gives the synthesis in the chat.
+| Runs folder | `~/.claude/agent-panel/runs` | The folder for saved files. It has one folder for each project. Each project folder has one folder for each run. Leave it empty to use the default. |
+| Default skill folders | none | Folders that contain `<skill>/SKILL.md`, for example `~/Code/my-skills`. Separate the folders with commas. `+skill` looks in these folders. |
 
 The runs folder has this structure:
 

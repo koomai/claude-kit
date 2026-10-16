@@ -7,35 +7,17 @@
   "description": "Agent panels and ping-pong planning with Claude subagents at a chosen model and effort",
   "types": "./types/index.d.ts",
   "userConfig": {
-    "save": {
-      "type": "string",
-      "title": "Save answers",
-      "description": "Where each seat's answer is kept: files under the runs folder, a Solo scratchpad per run, both, or off. save=<mode> on a command overrides it for that run.",
-      "options": [
-        "files",
-        "solo",
-        "both",
-        "off"
-      ],
-      "default": "files"
-    },
     "runsDir": {
       "type": "string",
-      "title": "Runs folder",
-      "description": "Where saved answers go when Save answers is files or both, one folder per project and run.",
+      "title": "Runs folder (default ~/.claude/agent-panel/runs)",
+      "description": "Where each run keeps its answers and its discussion page, one folder per project and run. Leave it empty for ~/.claude/agent-panel/runs.",
       "default": "~/.claude/agent-panel/runs"
     },
     "skillDirs": {
       "type": "string",
-      "title": "Skill folders",
-      "description": "Folders holding <skill>/SKILL.md that +skill on a seat loads from, comma separated, ahead of the session's own skills. skills=<folder> on a command or a preset's own folders come first.",
+      "title": "Default skill folders (e.g. ~/Code/my-skills)",
+      "description": "Folders of <skill>/SKILL.md that +skill on a seat looks in, comma separated, for example ~/Code/my-skills. skills=<folder> on a command or a preset's own folders come first.",
       "default": ""
-    },
-    "soloBriefs": {
-      "type": "boolean",
-      "title": "Solo briefs",
-      "description": "Also read briefs from Solo prompt templates named brief-<name>.",
-      "default": false
     }
   }
 }
