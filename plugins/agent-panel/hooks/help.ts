@@ -1,14 +1,14 @@
-export type HelpTone = 'heading' | 'command' | 'option' | 'quiet' | 'error'
+export type HelpTone = 'heading' | 'command' | 'option' | 'quiet' | 'error' | 'warning'
 export type HelpSpan = { text: string; tone?: HelpTone }
 
-const INLINE = /(?<=^|[\s(])\/[a-z][\w-]*(?=[\s.,;:)]|$)|\b[a-z][\w-]*=[^\s\],;)]*|\b[a-z]+:[a-z]+(?::[a-z]+)*(?:\+[\w-]+)*|(?<=\[)[:+][a-z][\w-]*|(?<=^|\s)--(?=\s|$)|[[\]]/g
+const INLINE = /(?<=^|[\s(])\/[a-z][\w-]*(?=[\s.,;:)]|$)|\b[a-z][\w-]*=[^\s\],;)]*|\b[a-z]+:[a-z]+(?::[a-z]+)*(?:\+[\w-]+)*|(?<=\[)[:+][a-z][\w-]*|(?<=\s)\+[a-z][\w-]*|(?<=^|\s)--(?=\s|$)|[[\]]/g
 const ROW = /^( {2})(\S+)( {2,})(?:(built-in|user|project)( +))?(.*)$/
 const HEADING_PREFIX = /^([^:]{1,30}): /
 const USAGE = /^([\w-]+: )?Usage: /
-
-export function isHelp(text: string): boolean {
-  return text.split('\n').some(line => USAGE.test(line))
-}
+const NUMBERED = /^(\d+\.)( )([^(]+?)( \(.*)?$/
+const PATH = /^[~/]\S*\//
+const WARNING = /^\s*[!⚠] /
+const LABELLED = /^([^\s/~].{0,29}?)( {2,})(\S.*)$/
 
 function inline(text: string, tone?: HelpTone): HelpSpan[] {
   const spans: HelpSpan[] = []
@@ -25,8 +25,13 @@ function inline(text: string, tone?: HelpTone): HelpSpan[] {
 }
 
 function heading(line: string, next: string | undefined): HelpSpan[] | undefined {
-  if (line === '' || /^[\s/]/.test(line) || !next?.startsWith(' ')) return undefined
+  if (line === '' || next === undefined || !(next.startsWith(' ') || NUMBERED.test(next))) return undefined
+  if (PATH.test(line)) return [{ text: line, tone: 'heading' }]
+  if (/^[\s/]/.test(line)) return undefined
+  const labelled = LABELLED.exec(line)
+  if (labelled !== null) return [{ text: labelled[1] ?? '', tone: 'heading' }, { text: labelled[2] ?? '' }, { text: labelled[3] ?? '', tone: 'quiet' }]
   if (line.length <= 40) return [{ text: line, tone: 'heading' }]
+  if (line.endsWith(':')) return inline(line, 'heading')
   const prefix = HEADING_PREFIX.exec(line)?.[1]
 
   return prefix === undefined ? undefined : [{ text: `${prefix}:`, tone: 'heading' }, ...inline(line.slice(prefix.length + 1))]
@@ -45,6 +50,13 @@ export function helpLines(text: string): HelpSpan[][] {
     }
     const titled = heading(line, lines[index + 1])
     if (titled !== undefined) return titled
+    if (WARNING.test(line)) return [{ text: line, tone: 'warning' }]
+    const numbered = NUMBERED.exec(line)
+    if (numbered !== null) {
+      const [, number = '', gap = '', label = '', rest = ''] = numbered
+
+      return [{ text: number, tone: 'quiet' }, { text: gap }, { text: label, tone: 'option' }, ...(rest === '' ? [] : [{ text: rest }])]
+    }
     const row = ROW.exec(line)
     if (row === null) return line === '' ? [] : inline(line)
     const [, indent = '', name = '', gap = '', source, sourceGap = '', rest = ''] = row

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import type { FolderSkill, Phase, PresetMap, RoundEntry, Run, RunKind, Seat } from '../types'
+import type { FolderSkill, Phase, PresetMap, PresetSource, RoundEntry, Run, RunKind, Seat } from '../types'
 import {
   EFFORTS,
   FALLBACK_PRESETS,
@@ -50,7 +50,7 @@ import { designCss, hashOf, layerDesign, readDesign } from './design'
 import type { Design, DesignLayer, Guide } from './design'
 import { historyEntry, historyScript, savedRun, sortHistory, withEntry } from './history'
 import type { History } from './history'
-import { helpLines, isHelp } from './help'
+import { helpLines } from './help'
 import type { HelpTone } from './help'
 
 type $ = EngineInterface
@@ -87,7 +87,7 @@ const SEAT_OPTIONS = `  model        ${Object.keys(MODELS).join(', ')}
 function presetLines(presets: PresetMap, seatCount?: number): string {
   return Object.entries(presets)
     .filter(([, preset]) => seatCount === undefined || preset.seats.length === seatCount)
-    .map(([name, preset]) => `  ${name.padEnd(16)} ${preset.source.padEnd(9)} ${preset.seats.join(' ')}`)
+    .map(([name, preset]) => clip(`  ${name.padEnd(16)} ${preset.source.padEnd(9)} ${preset.description ?? preset.seats.join(' ')}`, 100))
     .join('\n')
 }
 
@@ -1035,13 +1035,27 @@ Example
   /panel-preset save content-council skills=~/skills/marketing sonnet:high+ads+ad-creative sonnet:high+copywriting opus:high:contrarian+cro
   /panel content-council -- Critique the home page redesign`
 
-function presetDetail(name: string, preset: PresetMap[string]): string {
+const PRESET_INDENT = ' '.repeat(19)
+const PRESET_GROUPS: { source: PresetSource; title: string; empty?: string }[] = [
+  { source: 'built-in', title: 'Built-in presets' },
+  { source: 'user', title: `Your presets  ~/${PRESETS_PATH}`, empty: '  none yet: /panel-preset save <name> <seats>' },
+  { source: 'project', title: `Project presets  ${PRESETS_PATH}` },
+]
+
+function presetDetail(name: string, preset: PresetMap[string], warnings: readonly string[] = []): string {
+  const seats = preset.seats.map(spec => spec.replaceAll('+', ' +'))
   const options = [preset.brief === undefined ? '' : `brief=${preset.brief}`, preset.rounds === undefined ? '' : `rounds=${preset.rounds}`].filter(Boolean)
+  const dirs = preset.skillDirs ?? []
+  const oneLine = [...seats, ...options].join(' ')
+  if (preset.description === undefined && dirs.length === 0 && warnings.length === 0 && !oneLine.includes('+') && oneLine.length <= 60) return `  ${name.padEnd(16)} ${oneLine}`
+  const [first = '', ...rest] = preset.description === undefined ? seats : [preset.description, ...seats]
 
   return [
-    `  ${name.padEnd(16)} ${preset.source.padEnd(9)} ${[...preset.seats, ...options].join(' ')}`,
-    ...(preset.description === undefined ? [] : [`    ${preset.description}`]),
-    ...(preset.skillDirs ?? []).map(dir => `    skills from ${dir}`),
+    `  ${name.padEnd(16)} ${first}`,
+    ...rest.map(line => `${PRESET_INDENT}${line}`),
+    ...(options.length === 0 ? [] : [`${PRESET_INDENT}${options.join(' ')}`]),
+    ...dirs.map((dir, i) => `${PRESET_INDENT}${i === 0 ? 'skills from ' : ' '.repeat(12)}${dir}`),
+    ...warnings.map(warning => `${PRESET_INDENT}! ${warning}`),
   ].join('\n')
 }
 
@@ -1052,11 +1066,17 @@ async function listPresets($: $, config: Config): Promise<string> {
       const seats = preset.seats.flatMap(spec => parseArgs(spec, {}).seats)
       const { warnings } = seats.some(seat => seat.skills.length > 0) ? await resolveSkills($, seats, [...(preset.skillDirs ?? []), ...config.skillDirs]) : { warnings: [] }
 
-      return [presetDetail(name, preset), ...warnings.map(warning => `    ! ${warning}`)].join('\n')
+      return { source: preset.source, text: presetDetail(name, preset, warnings) }
     }),
   )
+  const groups = PRESET_GROUPS.flatMap(group => {
+    const texts = blocks.filter(block => block.source === group.source).map(block => block.text)
+    if (texts.length === 0 && group.empty === undefined) return []
 
-  return `Presets\n${blocks.join('\n')}\n${noticeLines(loaded.notices)}`.trimEnd()
+    return [`${group.title}\n${texts.length === 0 ? group.empty : texts.join(texts.some(text => text.includes('\n')) ? '\n\n' : '\n')}`]
+  })
+
+  return `${groups.join('\n\n')}\n${noticeLines(loaded.notices)}`.trimEnd()
 }
 
 async function showPreset($: $, name: string, config: Config): Promise<string> {
@@ -1066,7 +1086,9 @@ async function showPreset($: $, name: string, config: Config): Promise<string> {
   const resolved = await resolveSkills($, preset.seats.flatMap(spec => parseArgs(spec, {}).seats), [...(preset.skillDirs ?? []), ...config.skillDirs])
   const path = preset.source === 'built-in' ? `${$.plugin.root}/presets.json` : await presetsPath($, preset.source)
 
-  return [`Preset "${name}", from ${path}`, presetDetail(name, preset), seatList(resolved.seats), ...skillLines(resolved.seats), ...resolved.warnings].join('\n')
+  const skills = skillLines(resolved.seats)
+
+  return [`Preset "${name}" in ${path}:`, presetDetail(name, preset, resolved.warnings), ...(skills.length === 0 ? [] : ['', ...skills])].join('\n')
 }
 
 function scopeOf(words: readonly string[]): Scope | undefined {
@@ -1183,8 +1205,8 @@ type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 
 const BAR = 8
 const TONE_COLOR: Record<Tone, string | undefined> = { live: 'claude', good: 'success', bad: 'error', warn: 'warning', quiet: undefined, plain: undefined }
-const HELP_STYLE: Record<HelpTone, { color?: string; bold?: boolean; dimColor?: boolean }> = { heading: { bold: true }, command: { color: 'claude' }, option: { color: 'suggestion' }, quiet: { dimColor: true }, error: { color: 'error' } }
-const HELP_COMMANDS = ['panel', 'pingpong', 'panel-preset']
+const HELP_STYLE: Record<HelpTone, { color?: string; bold?: boolean; dimColor?: boolean }> = { heading: { bold: true }, command: { color: 'claude' }, option: { color: 'suggestion' }, quiet: { dimColor: true }, error: { color: 'error' }, warning: { color: 'warning' } }
+const STYLED_COMMANDS = ['panel', 'pingpong', 'panel-preset', 'panel-design', 'panel-stop', 'panel-view']
 const STEP_GLYPH: Record<StepState, string> = { done: '●', now: '◐', todo: '○', skipped: '·', failed: '✗' }
 const STEP_TONE: Record<StepState, Tone> = { done: 'good', now: 'live', todo: 'quiet', skipped: 'quiet', failed: 'bad' }
 const SEAT_GLYPH: Record<Seat['status'], string> = { starting: '○', working: '◐', done: '✓', failed: '✗' }
@@ -1627,9 +1649,8 @@ export const register: Register = (on, options) => {
     return { text: 'Agent panel opened.' }
   })
 
-  for (const command of HELP_COMMANDS) {
-    on('ui.render', { component: 'CommandOutput', props: { command } }, ($, e, next) => {
-      if (!isHelp(e.props.text)) return next(e)
+  for (const command of STYLED_COMMANDS) {
+    on('ui.render', { component: 'CommandOutput', props: { command } }, ($, e) => {
       const { Box, Text } = $.ui.resolve(e)
 
       return (

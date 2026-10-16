@@ -227,6 +227,8 @@ test('a preset is saved, listed, run, refused a second time without force, and d
   const listed = (await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'list' })).text
   expect(listed).toContain('content-council')
   expect(listed).toContain('skills from /skills/mk')
+  expect(listed).toMatch(/^Built-in presets\n  deep {13}opus:xhigh/)
+  expect(listed).toContain(`Your presets  ~/.claude/agent-panel/presets.json\n  content-council  haiku:low +ads\n                   haiku:medium:contrarian`)
   expect((await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'show content-council' })).text).toContain('Seat 1 +ads: /skills/mk/ads')
   expect((await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'skills' })).text).toContain('Paid advertising campaigns. [not applied: allowed-tools]')
 
@@ -363,7 +365,7 @@ test('the pane draws a card per run with its seats, on every surface', async ($,
   }
 })
 
-test('help output draws in colour while other command output keeps the engine row', async ($, on) => {
+test('help and every other command output draw in colour', async ($, on) => {
   fakeEngine(on)
   on('ui.render', { component: 'CommandOutput' }, () => ({ type: 'Text', props: {}, children: ['engine row'] }))
   const help = (await $.command.run({ ...COMMAND, command: 'panel', args: 'help' })).text ?? ''
@@ -377,9 +379,11 @@ test('help output draws in colour while other command output keeps the engine ro
     await ui.unmount()
   }
 
-  const other = await $.ui.mount({ plugin: 'agent-panel', surface: 'terminal', component: 'CommandOutput', props: { command: 'panel', args: '', text: 'Panel 1a2b started', isErrored: false } })
-  expect(await other.drawn()).toMatchObject({ type: 'Text', children: ['engine row'] })
-  await other.unmount()
+  const listed = (await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'list' })).text ?? ''
+  const list = await $.ui.mount({ plugin: 'agent-panel', surface: 'terminal', component: 'CommandOutput', props: { command: 'panel-preset', args: 'list', text: listed, isErrored: false } })
+  expect((await list.findAll({ type: 'Text', text: /^Built-in presets$/ })).map(found => found.props)).toContainEqual(expect.objectContaining({ bold: true }))
+  expect((await list.findAll({ type: 'Text', text: /^opus:xhigh$/ })).map(found => found.props)).toContainEqual(expect.objectContaining({ color: 'suggestion' }))
+  await list.unmount()
 })
 
 test('a panel takes rounds from the command, states the cost, and opens no reply round when no seat answered', async ($, on) => {
