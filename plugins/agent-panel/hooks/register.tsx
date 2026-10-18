@@ -82,6 +82,12 @@ async function readRuns($: EngineInterface): Promise<Run[]> {
   return value
 }
 
+async function findRun($: EngineInterface, id: string): Promise<Run | undefined> {
+  const list = await readRuns($)
+
+  return list.find(one => one.id === id)
+}
+
 async function changeRuns($: EngineInterface, change: (list: Run[]) => Run[]): Promise<Run[]> {
   for (;;) {
     const held = await $.state.get(RUNS)
@@ -297,7 +303,11 @@ async function resolveSkills($: EngineInterface, seats: readonly Seat[], dirs: r
         continue
       }
       skills.push(name)
-      known ??= [...(await sessionSkillNames($)), ...(await folderSkillNames($, roots))]
+      if (known === undefined) {
+        const sessionNames = await sessionSkillNames($)
+        const folderNames = await folderSkillNames($, roots)
+        known = [...sessionNames, ...folderNames]
+      }
       if (known.includes(name)) continue
       unknownSkills.push(name)
       const near = nearestNames(name, known)
@@ -338,11 +348,11 @@ async function folderBriefs($: EngineInterface, folder: BriefFolder): Promise<Br
   const names = entries.filter(entry => entry.kind === 'file' && entry.name.endsWith('.md')).map(entry => entry.name.slice(0, -3))
 
   return Promise.all(
-    names.map(async name => ({
-      name,
-      source: folder.source,
-      summary: ((await readBriefFile($, folder.path, name)) ?? '').split('\n', 1)[0] ?? '',
-    })),
+    names.map(async name => {
+      const text = await readBriefFile($, folder.path, name)
+
+      return { name, source: folder.source, summary: (text ?? '').split('\n', 1)[0] ?? '' }
+    }),
   )
 }
 
@@ -356,7 +366,8 @@ async function loadBrief($: EngineInterface, name: string): Promise<string | und
 }
 
 async function listBriefs($: EngineInterface): Promise<BriefEntry[]> {
-  const own = await Promise.all((await briefFolders($)).map(folder => folderBriefs($, folder)))
+  const folders = await briefFolders($)
+  const own = await Promise.all(folders.map(folder => folderBriefs($, folder)))
   const builtIn = await folderBriefs($, { path: `${$.plugin.root}/briefs`, source: 'built-in' })
   const seen = new Set<string>()
 
@@ -456,7 +467,8 @@ async function designCommand($: EngineInterface, args: string): Promise<string> 
     if (target === undefined) return where === 'user' ? 'HOME is not set, so there is no user design file.' : `Copy to "user" or "project", not "${where}".`
     if (await $.fs.exists(target.path).catch(() => false)) return `${target.path} already exists and was left as it is.`
     try {
-      await $.fs.write(target.path, (await loadPageFiles($)).design)
+      const files = await loadPageFiles($)
+      await $.fs.write(target.path, files.design)
     } catch (error) {
       return `${target.path} could not be written: ${reason(error)}`
     }
@@ -483,7 +495,7 @@ async function putPage($: EngineInterface, dir: string, data: AnyPage): Promise<
 }
 
 async function writePageNow($: EngineInterface, id: string): Promise<void> {
-  const run = (await readRuns($)).find(one => one.id === id)
+  const run = await findRun($, id)
   if (!run || run.dir === undefined || run.page === undefined || run.isReported === true) return
   try {
     await putPage($, run.dir, pageFor(run, await $.clock.now()))
@@ -543,7 +555,7 @@ async function scanHistory($: EngineInterface, root: string, stamp: string): Pro
 let historyQueue: Promise<void> = Promise.resolve()
 
 async function syncHistoryNow($: EngineInterface, id: string): Promise<void> {
-  const run = (await readRuns($)).find(one => one.id === id)
+  const run = await findRun($, id)
   if (!run || run.dir === undefined || run.page === undefined) return
   const root = run.dir.slice(0, run.dir.lastIndexOf('/'))
   const assets = await loadPageAssets($)
@@ -588,7 +600,7 @@ async function restorePage($: EngineInterface, run: Run): Promise<void> {
 }
 
 async function openRun($: EngineInterface, id: string): Promise<void> {
-  const run = (await readRuns($)).find(one => one.id === id)
+  const run = await findRun($, id)
   if (!run || run.dir === undefined) return
   const page = `${run.dir}/discussion.html`
   if (!isLive(run) && !(await $.fs.exists(page))) await restorePage($, run).catch(() => undefined)
@@ -700,7 +712,10 @@ async function continueSeat($: EngineInterface, run: Run, index: number, agentId
 
 async function askSeat($: EngineInterface, run: Run, index: number, brief: (isContinued: boolean) => string): Promise<void> {
   const agentId = run.seats[index]?.agentId
-  if (agentId !== undefined && (await continueSeat($, run, index, agentId, brief(true)))) return
+  if (agentId !== undefined) {
+    const isContinued = await continueSeat($, run, index, agentId, brief(true))
+    if (isContinued) return
+  }
   await spawnSeat($, run, index, brief(false))
 }
 
@@ -722,7 +737,8 @@ async function startRun($: EngineInterface, kind: RunKind, launch: Launch, confi
     ...(launch.notes.length === 0 ? {} : { notes: launch.notes }),
     ...(launch.warnings.length === 0 ? {} : { warnings: launch.warnings }),
   }
-  const run = { ...opened, ...(await openRecord($, opened, config)) }
+  const record = await openRecord($, opened, config)
+  const run = { ...opened, ...record }
   await changeRuns($, list => [...list, run].slice(-10))
   await writePage($, run.id)
   void $.ui.open({ id: PANE, title: 'Agent panel' })
@@ -736,7 +752,9 @@ async function startRun($: EngineInterface, kind: RunKind, launch: Launch, confi
   await writePage($, run.id)
   await syncHistory($, run.id)
 
-  return (await readRuns($)).find(one => one.id === run.id) ?? run
+  const current = await findRun($, run.id)
+
+  return current ?? run
 }
 
 function isSettled(seat: Seat): boolean {
@@ -745,10 +763,12 @@ function isSettled(seat: Seat): boolean {
 
 async function finish($: EngineInterface, run: Run, phase: Phase, text: string, outcome?: string): Promise<void> {
   const endedAt = await $.clock.now()
-  const saved = savedLines((await patchRun($, run.id, current => ({ ...current, phase, endedAt, ...(outcome === undefined ? {} : { outcome }) }))) ?? run)
+  const ended = await patchRun($, run.id, current => ({ ...current, phase, endedAt, ...(outcome === undefined ? {} : { outcome }) }))
+  const saved = savedLines(ended ?? run)
   await writePage($, run.id)
   await syncHistory($, run.id)
-  if (!(await readRuns($)).some(isLive)) stopTicker()
+  const list = await readRuns($)
+  if (!list.some(isLive)) stopTicker()
   $.ui.status(undefined)
   $.ui.toast(`${run.kind} ${run.id} ${phase === 'failed' ? 'failed' : 'finished'}`)
   const isReported = await submit($, saved.length === 0 ? text : `${text}\n\nEnd by telling me this:\n${saved.join('\n')}`)
@@ -980,7 +1000,8 @@ async function launch($: EngineInterface, kind: RunKind, args: string, config: C
 
   const text = prepared.brief === undefined ? undefined : await loadBrief($, prepared.brief)
   if (prepared.brief !== undefined && text === undefined) {
-    const known = (await listBriefs($)).map(brief => brief.name).join(', ')
+    const briefs = await listBriefs($)
+    const known = briefs.map(brief => brief.name).join(', ')
 
     return { errors: [`No brief named "${prepared.brief}". Known briefs: ${known || 'none'}.`] }
   }
@@ -1147,7 +1168,8 @@ async function savePreset($: EngineInterface, name: string, words: readonly stri
   if (parsed.as !== undefined) errors.push('as= belongs on /panel and /pingpong.')
   if (scope === 'project' && skillDirs.length > 0) errors.push('A project preset cannot carry skill folders, since a repository could then feed its own text to the seats. Put the folder in the "Default skill folders" setting, or save without scope=project.')
   if (scope === 'project' && Object.hasOwn(loaded.builtIn, name)) errors.push(`A project preset cannot be named "${name}": that is a built-in.`)
-  if (brief !== undefined && (await loadBrief($, brief)) === undefined) errors.push(`No brief named "${brief}".`)
+  const briefText = brief === undefined ? undefined : await loadBrief($, brief)
+  if (brief !== undefined && briefText === undefined) errors.push(`No brief named "${brief}".`)
   if (errors.length > 0 || scope === undefined) return `${errors.join('\n')}\n\n${PRESET_USAGE}`
 
   const saved = await changePresets($, scope, (file, path) => {
@@ -1429,7 +1451,8 @@ function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: numb
 
 async function noteActivity($: EngineInterface, agentId: string, activity: string): Promise<void> {
   const isSeat = (seat: Seat) => seat.agentId === agentId && seat.status === 'working'
-  if (!(await readRuns($)).some(run => isLive(run) && run.seats.some(isSeat))) return
+  const list = await readRuns($)
+  if (!list.some(run => isLive(run) && run.seats.some(isSeat))) return
 
   await changeRuns($, list => list.map(run => ({ ...run, seats: run.seats.map(seat => (isSeat(seat) ? { ...seat, steps: (seat.steps ?? 0) + 1, activity } : seat)) })))
 }
@@ -1438,7 +1461,8 @@ async function noteActivity($: EngineInterface, agentId: string, activity: strin
 let resuming = 0
 
 async function stopRun($: EngineInterface, id: string): Promise<string> {
-  const live = [...(await readRuns($))].reverse().filter(isLive)
+  const list = await readRuns($)
+  const live = [...list].reverse().filter(isLive)
   const run = id === '' ? live[0] : live.find(one => one.id === id)
   if (!run) return id === '' ? 'No run is in progress.' : `No run "${id}" is in progress.`
 
@@ -1531,7 +1555,8 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     if (e.origin?.kind !== 'task-notification') return next(e)
-    const note = collectedNote(await readRuns($), e.text)
+    const list = await readRuns($)
+    const note = collectedNote(list, e.text)
 
     if (note === undefined) return next(e)
 
@@ -1597,7 +1622,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__verdict' }, async ($, e) => {
     const runId = String((e as unknown as { runId?: unknown }).runId ?? '')
-    const run = (await readRuns($)).find(one => one.id === runId)
+    const run = await findRun($, runId)
     if (!run) return { deny: `No panel or ping-pong run "${runId}".` }
     if (run.dir === undefined || run.page === undefined) return { deny: `Run ${run.id} has no page because its answers were not saved to files. Give the ${run.kind === 'panel' ? 'synthesis' : 'plan'} in the chat instead.` }
     const verdict = readVerdict(e)
@@ -1617,7 +1642,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong_merge' }, async ($, e) => {
     const input = e as unknown as { runId: string; plan: string }
-    const run = (await readRuns($)).find(one => one.id === input.runId)
+    const run = await findRun($, input.runId)
     if (!run || run.kind !== 'pingpong') return { deny: `No ping-pong run "${input.runId}".` }
 
     const claimed = await claimStep($, run.id, 'merging', 'challenging', () => true)
@@ -1629,7 +1654,7 @@ export const register: Register = (on, options) => {
       await askSeat($, started, 0, isContinued => challengeBrief(input.plan, 1, started.rounds, isContinued))
       await writePage($, run.id)
     }
-    const after = (await readRuns($)).find(one => one.id === run.id)
+    const after = await findRun($, run.id)
     if (after?.phase === 'failed') {
       await patchRun($, run.id, current => ({ ...current, isReported: true }))
       return { result: `Ping-pong ${run.id} stopped: ${run.seats[0]?.label} could not start. ${after.seats[0]?.answer ?? ''} Tell the user the rounds did not run.` }
@@ -1705,7 +1730,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const kit = $.ui.resolve(e)
     const { Box, Text, Button } = kit
-    const list = [...(await readRuns($))].reverse()
+    const all = await readRuns($)
+    const list = [...all].reverse()
     if (!list.some(isLive)) stopTicker()
     if (list.length === 0) return <Text dimColor>No panels yet. Try /panel or /pingpong.</Text>
 

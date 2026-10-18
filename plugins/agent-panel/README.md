@@ -465,7 +465,7 @@ Each seat is a subagent of a type that the plugin registers for each model and e
 | `session.start` | Registers the commands, the tools and the seat agent types. It passes the event on unchanged. |
 | `agent.offer` | Hides the seat agent types from Claude, so that Claude cannot start a seat outside a run. It offers a type only while the plugin itself continues one of its seats. |
 | `prompt.submit` | Drops only the task notification that the engine posts when the plugin continues one of its own seats. It passes on every other prompt unchanged. |
-| `tool.call` | Records what each seat is doing, for the pane, and passes the call on unchanged. Separate hooks answer the plugin's own tools: `panel`, `pingpong`, `pingpong_merge`, `verdict` and `git`. It does not stand in for any other tool. |
+| `tool.call` | Records what each seat is doing, for the pane, and passes the call on unchanged. Separate hooks answer every call to the plugin's own tools, `panel`, `pingpong`, `pingpong_merge`, `verdict` and `git`, in place of the tool: the plugin registers these tools, and these hooks are how they run. It never answers a call to any other tool. |
 | `turn.step` | Reads the text and thinking of each seat as it streams, and the token count of each step, for the pane. It passes every chunk on unchanged. |
 | `turn.complete` | Records the answer of each seat and starts the next step of the run. It passes the result on unchanged. |
 | `command.run` | Answers the plugin's own commands: `/panel`, `/pingpong`, `/panel-preset`, `/panel-design`, `/panel-stop` and `/panel-view`. |
