@@ -48,3 +48,4 @@ test('list, show, skills and start output is coloured like help', () => {
   expect(toned(['/home/me/skills (2)', '  ads                      Writes ads'].join('\n'))).toEqual([['heading:/home/me/skills (2)'], ['option:ads']])
   expect(toned(['Panel 1a2b started:', '1. haiku·low (claude-haiku-5-5, effort low)'].join('\n'))).toEqual([['heading:Panel 1a2b started:'], ['quiet:1.', 'option:haiku·low']])
 })
+

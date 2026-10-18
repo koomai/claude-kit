@@ -90,11 +90,15 @@ const SEAT_OPTIONS = `  model        ${Object.keys(MODELS).join(', ')}
   effort       ${EFFORTS.join(', ')}
   +skill       loads a skill into the seat: a folder under skills= or the "Default skill folders" setting, else a session skill by the name /skills shows; repeat for more`
 
+function nameWidth(names: readonly string[]): number {
+  return Math.max(16, ...names.map(name => name.length + 1))
+}
+
 function presetLines(presets: PresetMap, seatCount?: number): string {
-  return Object.entries(presets)
-    .filter(([, preset]) => seatCount === undefined || preset.seats.length === seatCount)
-    .map(([name, preset]) => clip(`  ${name.padEnd(16)} ${preset.source.padEnd(9)} ${preset.description ?? preset.seats.join(' ')}`, 100))
-    .join('\n')
+  const shown = Object.entries(presets).filter(([, preset]) => seatCount === undefined || preset.seats.length === seatCount)
+  const width = nameWidth(shown.map(([name]) => name))
+
+  return shown.map(([name, preset]) => `  ${name.padEnd(width)} ${preset.source.padEnd(9)} ${clip(preset.description ?? preset.seats.join(' '), 72)}`).join('\n')
 }
 
 function presetHelp(presets: PresetMap): string {
@@ -1062,38 +1066,39 @@ Example
   /panel-preset save content-council skills=~/skills/marketing sonnet:high+ads+ad-creative sonnet:high+copywriting opus:high:contrarian+cro
   /panel content-council -- Critique the home page redesign`
 
-const PRESET_INDENT = ' '.repeat(19)
 const PRESET_GROUPS: { source: PresetSource; title: string; empty?: string }[] = [
   { source: 'built-in', title: 'Built-in presets' },
   { source: 'user', title: `Your presets  ~/${PRESETS_PATH}`, empty: '  none yet: /panel-preset save <name> <seats>' },
   { source: 'project', title: `Project presets  ${PRESETS_PATH}` },
 ]
 
-function presetDetail(name: string, preset: PresetMap[string], warnings: readonly string[] = []): string {
+function presetDetail(name: string, preset: PresetMap[string], width: number, warnings: readonly string[] = []): string {
+  const indent = ' '.repeat(width + 3)
   const seats = preset.seats.map(spec => spec.replaceAll('+', ' +'))
   const options = [preset.brief === undefined ? '' : `brief=${preset.brief}`, preset.rounds === undefined ? '' : `rounds=${preset.rounds}`].filter(Boolean)
   const dirs = preset.skillDirs ?? []
   const oneLine = [...seats, ...options].join(' ')
-  if (preset.description === undefined && dirs.length === 0 && warnings.length === 0 && !oneLine.includes('+') && oneLine.length <= 60) return `  ${name.padEnd(16)} ${oneLine}`
+  if (preset.description === undefined && dirs.length === 0 && warnings.length === 0 && !oneLine.includes('+') && oneLine.length <= 60) return `  ${name.padEnd(width)} ${oneLine}`
   const [first = '', ...rest] = preset.description === undefined ? seats : [preset.description, ...seats]
 
   return [
-    `  ${name.padEnd(16)} ${first}`,
-    ...rest.map(line => `${PRESET_INDENT}${line}`),
-    ...(options.length === 0 ? [] : [`${PRESET_INDENT}${options.join(' ')}`]),
-    ...dirs.map((dir, i) => `${PRESET_INDENT}${i === 0 ? 'skills from ' : ' '.repeat(12)}${dir}`),
-    ...warnings.map(warning => `${PRESET_INDENT}! ${warning}`),
+    `  ${name.padEnd(width)} ${first}`,
+    ...rest.map(line => `${indent}${line}`),
+    ...(options.length === 0 ? [] : [`${indent}${options.join(' ')}`]),
+    ...dirs.map((dir, i) => `${indent}${i === 0 ? 'skills from ' : ' '.repeat(12)}${dir}`),
+    ...warnings.map(warning => `${indent}! ${warning}`),
   ].join('\n')
 }
 
 async function listPresets($: EngineInterface, config: Config): Promise<string> {
   const loaded = await loadPresets($)
+  const width = nameWidth(Object.keys(loaded.presets))
   const blocks = await Promise.all(
     Object.entries(loaded.presets).map(async ([name, preset]) => {
       const seats = preset.seats.flatMap(spec => parseArgs(spec, {}).seats)
       const { warnings } = seats.some(seat => seat.skills.length > 0) ? await resolveSkills($, seats, [...(preset.skillDirs ?? []), ...config.skillDirs]) : { warnings: [] }
 
-      return { source: preset.source, text: presetDetail(name, preset, warnings) }
+      return { source: preset.source, text: presetDetail(name, preset, width, warnings) }
     }),
   )
   const groups = PRESET_GROUPS.flatMap(group => {
@@ -1115,7 +1120,7 @@ async function showPreset($: EngineInterface, name: string, config: Config): Pro
 
   const skills = skillLines(resolved.seats)
 
-  return [`Preset "${name}" in ${path}:`, presetDetail(name, preset, resolved.warnings), ...(skills.length === 0 ? [] : ['', ...skills])].join('\n')
+  return [`Preset "${name}" in ${path}:`, presetDetail(name, preset, nameWidth([name]), resolved.warnings), ...(skills.length === 0 ? [] : ['', ...skills])].join('\n')
 }
 
 function scopeOf(words: readonly string[]): Scope | undefined {

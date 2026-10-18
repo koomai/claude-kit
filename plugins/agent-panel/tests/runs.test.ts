@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { helpLines } from '../hooks/help'
 
 const COMMAND = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
@@ -555,4 +556,14 @@ test('the first run in a project builds pages and a history for the runs already
   expect(index).toContain('"id":"aa11bb"')
   expect(index.indexOf('Is it the cache?')).toBeLessThan(index.indexOf('Why so slow?'))
   expect(index).not.toContain('notes')
+})
+
+test('a preset with a long name keeps its columns in the help, so its name is coloured', async ($, on) => {
+  fakeEngine(on)
+  await $.command.run({ ...COMMAND, command: 'panel-preset', args: 'save plu-word-of-mouth haiku:low haiku:medium' })
+  const help = (await $.command.run({ ...COMMAND, command: 'panel', args: 'help' })).text ?? ''
+  const line = help.split('\n').find(row => row.includes('plu-word-of-mouth')) ?? ''
+
+  expect(line).toMatch(/^ {2}plu-word-of-mouth {2,}user {6}haiku:low haiku:medium$/)
+  expect(helpLines(line)[0]?.filter(span => span.tone !== undefined).map(span => `${span.tone}:${span.text}`)).toEqual(['option:plu-word-of-mouth', 'quiet:user', 'option:haiku:low', 'option:haiku:medium'])
 })
