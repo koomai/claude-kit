@@ -53,7 +53,6 @@ import type { History } from './history'
 import { helpLines } from './help'
 import type { HelpTone } from './help'
 
-type $ = EngineInterface
 
 const PLUGIN = 'agent-panel'
 const PANE = 'agent-panel'
@@ -77,17 +76,18 @@ function readConfig(options: PluginOptions): Config {
 
 const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
 
-async function readRuns($: $): Promise<Run[]> {
+async function readRuns($: EngineInterface): Promise<Run[]> {
   const { value = [] } = await $.state.get(RUNS)
 
   return value
 }
 
-async function changeRuns($: $, change: (list: Run[]) => Run[]): Promise<Run[]> {
+async function changeRuns($: EngineInterface, change: (list: Run[]) => Run[]): Promise<Run[]> {
   for (;;) {
     const held = await $.state.get(RUNS)
     const next = change(held.value ?? [])
-    if ((await $.state.set(RUNS, next, { ifVersion: held.version })).isSet) return next
+    const written = await $.state.set(RUNS, next, { ifVersion: held.version })
+    if (written.isSet) return next
   }
 }
 
@@ -189,7 +189,7 @@ type Loaded = { presets: PresetMap; builtIn: PresetMap; notices: string[] }
 type JsonFile = { state: 'missing' } | { state: 'corrupt'; reason: string } | { state: 'ok'; value: unknown }
 type Scope = 'user' | 'project'
 
-async function readJsonFile($: $, path: string): Promise<JsonFile> {
+async function readJsonFile($: EngineInterface, path: string): Promise<JsonFile> {
   if (!(await $.fs.exists(path).catch(() => false))) return { state: 'missing' }
   try {
     return { state: 'ok', value: JSON.parse(await $.fs.read(path)) }
@@ -198,7 +198,7 @@ async function readJsonFile($: $, path: string): Promise<JsonFile> {
   }
 }
 
-async function homeDir($: $): Promise<string | undefined> {
+async function homeDir($: EngineInterface): Promise<string | undefined> {
   return $.env.get('HOME').catch(() => undefined)
 }
 
@@ -206,14 +206,14 @@ function expandHome(path: string, home: string | undefined): string {
   return home !== undefined && (path === '~' || path.startsWith('~/')) ? `${home}${path.slice(1)}` : path
 }
 
-async function presetsPath($: $, scope: Scope): Promise<string | undefined> {
+async function presetsPath($: EngineInterface, scope: Scope): Promise<string | undefined> {
   if (scope === 'project') return PRESETS_PATH
   const home = await homeDir($)
 
   return home === undefined ? undefined : `${home}/${PRESETS_PATH}`
 }
 
-async function loadPresets($: $): Promise<Loaded> {
+async function loadPresets($: EngineInterface): Promise<Loaded> {
   const shipped = await readJsonFile($, `${$.plugin.root}/presets.json`)
   const builtIn = shipped.state === 'ok' ? readPresetLayer(shipped.value, 'built-in').presets : FALLBACK_PRESETS
   const notices: string[] = []
@@ -232,7 +232,7 @@ async function loadPresets($: $): Promise<Loaded> {
   return { presets, builtIn, notices }
 }
 
-async function changePresets($: $, scope: Scope, change: (file: Record<string, unknown>, path: string) => string | undefined): Promise<{ path: string } | { error: string }> {
+async function changePresets($: EngineInterface, scope: Scope, change: (file: Record<string, unknown>, path: string) => string | undefined): Promise<{ path: string } | { error: string }> {
   const path = await presetsPath($, scope)
   if (path === undefined) return { error: 'HOME is not set, so there is no user presets file.' }
   const json = await readJsonFile($, path)
@@ -252,13 +252,13 @@ async function changePresets($: $, scope: Scope, change: (file: Record<string, u
   return { path }
 }
 
-async function skillRoots($: $, dirs: readonly string[]): Promise<string[]> {
+async function skillRoots($: EngineInterface, dirs: readonly string[]): Promise<string[]> {
   const home = await homeDir($)
 
   return [...new Set(dirs.map(dir => expandHome(dir.trim(), home)).filter(Boolean))]
 }
 
-async function findFolderSkill($: $, roots: readonly string[], name: string): Promise<FolderSkill | undefined> {
+async function findFolderSkill($: EngineInterface, roots: readonly string[], name: string): Promise<FolderSkill | undefined> {
   for (const root of roots) {
     const stat = await $.fs.stat(`${root}/${name}`, { resolve: true }).catch(() => undefined)
     const path = stat?.kind === 'dir' ? stat.realPath : undefined
@@ -268,19 +268,19 @@ async function findFolderSkill($: $, roots: readonly string[], name: string): Pr
   return undefined
 }
 
-async function folderSkillNames($: $, roots: readonly string[]): Promise<string[]> {
+async function folderSkillNames($: EngineInterface, roots: readonly string[]): Promise<string[]> {
   const lists = await Promise.all(roots.map(root => $.fs.list(root).catch(() => [])))
 
   return lists.flat().filter(entry => entry.kind === 'dir' || entry.isLink).map(entry => entry.name)
 }
 
-async function sessionSkillNames($: $): Promise<string[]> {
+async function sessionSkillNames($: EngineInterface): Promise<string[]> {
   const commands = await $.command.list().catch(() => [])
 
   return commands.filter(command => (command.source === 'user' || command.source === 'plugin') && command.plugin !== PLUGIN).map(command => command.name)
 }
 
-async function resolveSkills($: $, seats: readonly Seat[], dirs: readonly string[]): Promise<{ seats: Seat[]; warnings: string[] }> {
+async function resolveSkills($: EngineInterface, seats: readonly Seat[], dirs: readonly string[]): Promise<{ seats: Seat[]; warnings: string[] }> {
   const roots = await skillRoots($, dirs)
   const warnings: string[] = []
   const resolved: Seat[] = []
@@ -316,7 +316,7 @@ function skillLines(seats: readonly Seat[]): string[] {
   ])
 }
 
-async function briefFolders($: $): Promise<BriefFolder[]> {
+async function briefFolders($: EngineInterface): Promise<BriefFolder[]> {
   const home = await $.env.get('HOME').catch(() => undefined)
 
   return [
@@ -325,7 +325,7 @@ async function briefFolders($: $): Promise<BriefFolder[]> {
   ]
 }
 
-async function readBriefFile($: $, folder: string, name: string): Promise<string | undefined> {
+async function readBriefFile($: EngineInterface, folder: string, name: string): Promise<string | undefined> {
   try {
     return (await $.fs.read(`${folder}/${name}.md`)).trim() || undefined
   } catch {
@@ -333,7 +333,7 @@ async function readBriefFile($: $, folder: string, name: string): Promise<string
   }
 }
 
-async function folderBriefs($: $, folder: BriefFolder): Promise<BriefEntry[]> {
+async function folderBriefs($: EngineInterface, folder: BriefFolder): Promise<BriefEntry[]> {
   const entries = await $.fs.list(folder.path).catch(() => [])
   const names = entries.filter(entry => entry.kind === 'file' && entry.name.endsWith('.md')).map(entry => entry.name.slice(0, -3))
 
@@ -346,7 +346,7 @@ async function folderBriefs($: $, folder: BriefFolder): Promise<BriefEntry[]> {
   )
 }
 
-async function loadBrief($: $, name: string): Promise<string | undefined> {
+async function loadBrief($: EngineInterface, name: string): Promise<string | undefined> {
   for (const folder of await briefFolders($)) {
     const text = await readBriefFile($, folder.path, name)
     if (text !== undefined) return text
@@ -355,7 +355,7 @@ async function loadBrief($: $, name: string): Promise<string | undefined> {
   return readBriefFile($, `${$.plugin.root}/briefs`, name)
 }
 
-async function listBriefs($: $): Promise<BriefEntry[]> {
+async function listBriefs($: EngineInterface): Promise<BriefEntry[]> {
   const own = await Promise.all((await briefFolders($)).map(folder => folderBriefs($, folder)))
   const builtIn = await folderBriefs($, { path: `${$.plugin.root}/briefs`, source: 'built-in' })
   const seen = new Set<string>()
@@ -363,7 +363,7 @@ async function listBriefs($: $): Promise<BriefEntry[]> {
   return [...own.flat(), ...builtIn].filter(brief => !seen.has(brief.name) && seen.add(brief.name))
 }
 
-async function openRecord($: $, run: Run, config: Config): Promise<Partial<Run>> {
+async function openRecord($: EngineInterface, run: Run, config: Config): Promise<Partial<Run>> {
   const kind = run.kind === 'panel' ? 'Panel' : 'Ping-pong'
   const brief = run.brief === undefined ? '' : `, brief "${run.brief}"`
   const rounds = run.kind === 'panel' && run.rounds > 1 ? `, up to ${run.rounds} rounds` : ''
@@ -389,7 +389,7 @@ async function openRecord($: $, run: Run, config: Config): Promise<Partial<Run>>
   return record
 }
 
-async function saveArtifact($: $, run: Run, file: string, title: string, text: string): Promise<void> {
+async function saveArtifact($: EngineInterface, run: Run, file: string, title: string, text: string): Promise<void> {
   const failures: string[] = []
   if (run.dir !== undefined) {
     await $.fs.write(`${run.dir}/${file}.md`, `# ${title}\n\n${text}\n`).catch(error => failures.push(`"${title}" was not written to a file: ${reason(error)}`))
@@ -409,7 +409,7 @@ type DesignSource = { scope: Scope; path: string }
 let pageFiles: Promise<PageFiles> | undefined
 const pageQueue = new Map<string, Promise<void>>()
 
-function loadPageFiles($: $): Promise<PageFiles> {
+function loadPageFiles($: EngineInterface): Promise<PageFiles> {
   pageFiles ??= Promise.all(['page.css', 'page.js', 'marked.min.js', 'design.md'].map(name => $.fs.read(`${$.plugin.root}/page/${name}`))).then(([css = '', script = '', marked = '', design = '']) => ({ css, script, marked, design }))
   pageFiles.catch(() => {
     pageFiles = undefined
@@ -418,13 +418,13 @@ function loadPageFiles($: $): Promise<PageFiles> {
   return pageFiles
 }
 
-async function designSources($: $): Promise<DesignSource[]> {
+async function designSources($: EngineInterface): Promise<DesignSource[]> {
   const home = await homeDir($)
 
   return [...(home === undefined ? [] : [{ scope: 'user' as const, path: `${home}/${DESIGN_PATH}` }]), { scope: 'project' as const, path: DESIGN_PATH }]
 }
 
-async function loadDesign($: $): Promise<{ design: Design; changedBy: DesignSource[] }> {
+async function loadDesign($: EngineInterface): Promise<{ design: Design; changedBy: DesignSource[] }> {
   const files = await loadPageFiles($)
   const sources = await designSources($)
   const layers = await Promise.all(sources.map(source => $.fs.read(source.path).then(readDesign, (): DesignLayer | undefined => undefined)))
@@ -432,20 +432,20 @@ async function loadDesign($: $): Promise<{ design: Design; changedBy: DesignSour
   return { design: layerDesign([readDesign(files.design), ...layers.flatMap(layer => (layer === undefined ? [] : [layer]))]), changedBy: sources.filter((_, i) => layers[i] !== undefined) }
 }
 
-function loadGuide($: $): Promise<Guide | undefined> {
+function loadGuide($: EngineInterface): Promise<Guide | undefined> {
   return loadDesign($).then(
     loaded => loaded.design,
     () => undefined,
   )
 }
 
-async function loadPageAssets($: $): Promise<PageAssets> {
+async function loadPageAssets($: EngineInterface): Promise<PageAssets> {
   const [files, { design }] = await Promise.all([loadPageFiles($), loadDesign($)])
 
   return { css: designCss(design, files.css), script: files.script, marked: files.marked, fonts: design.webfonts }
 }
 
-async function designCommand($: $, args: string): Promise<string> {
+async function designCommand($: EngineInterface, args: string): Promise<string> {
   const [verb = '', where = 'user'] = args.trim().toLowerCase().split(/\s+/)
   const sources = await designSources($)
   const shipped = `${$.plugin.root}/page/design.md`
@@ -475,14 +475,14 @@ async function designCommand($: $, args: string): Promise<string> {
   }
 }
 
-async function putPage($: $, dir: string, data: AnyPage): Promise<void> {
+async function putPage($: EngineInterface, dir: string, data: AnyPage): Promise<void> {
   const assets = await loadPageAssets($)
   await $.fs.write(`${dir}/discussion.json`, `${JSON.stringify(data, null, 1)}\n`)
   await $.fs.write(`${dir}/discussion.html`, pageHtml(data, assets, 'local'))
   await $.fs.write(`${dir}/discussion.rev.js`, `window.__panelRev&&window.__panelRev(${data.rev})\n`)
 }
 
-async function writePageNow($: $, id: string): Promise<void> {
+async function writePageNow($: EngineInterface, id: string): Promise<void> {
   const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined || run.isReported === true) return
   try {
@@ -496,14 +496,14 @@ async function writePageNow($: $, id: string): Promise<void> {
   }
 }
 
-function writePage($: $, id: string): Promise<void> {
+function writePage($: EngineInterface, id: string): Promise<void> {
   const next = (pageQueue.get(id) ?? Promise.resolve()).then(() => writePageNow($, id))
   pageQueue.set(id, next)
 
   return next
 }
 
-async function savedPage($: $, dir: string): Promise<AnyPage | undefined> {
+async function savedPage($: EngineInterface, dir: string): Promise<AnyPage | undefined> {
   const listed = (await $.fs.list(dir)).filter(entry => entry.kind === 'file' && entry.name.endsWith('.md'))
   const texts = await Promise.all(listed.map(entry => $.fs.read(`${dir}/${entry.name}`).catch(() => '')))
   const written = listed.find(entry => entry.name === 'question.md')?.mtimeMs ?? 0
@@ -513,7 +513,7 @@ async function savedPage($: $, dir: string): Promise<AnyPage | undefined> {
   return run === undefined ? undefined : pageFor(run, await $.clock.now())
 }
 
-async function scanHistory($: $, root: string, stamp: string): Promise<History> {
+async function scanHistory($: EngineInterface, root: string, stamp: string): Promise<History> {
   const assets = await loadPageAssets($)
   const folders = (await $.fs.list(root)).filter(entry => entry.kind === 'dir')
   const entries = await Promise.all(
@@ -542,7 +542,7 @@ async function scanHistory($: $, root: string, stamp: string): Promise<History> 
 
 let historyQueue: Promise<void> = Promise.resolve()
 
-async function syncHistoryNow($: $, id: string): Promise<void> {
+async function syncHistoryNow($: EngineInterface, id: string): Promise<void> {
   const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined) return
   const root = run.dir.slice(0, run.dir.lastIndexOf('/'))
@@ -556,13 +556,13 @@ async function syncHistoryNow($: $, id: string): Promise<void> {
   await $.fs.write(`${root}/history.js`, historyScript(history))
 }
 
-function syncHistory($: $, id: string): Promise<void> {
+function syncHistory($: EngineInterface, id: string): Promise<void> {
   historyQueue = historyQueue.then(() => syncHistoryNow($, id)).catch(() => undefined)
 
   return historyQueue
 }
 
-async function restorePage($: $, run: Run): Promise<void> {
+async function restorePage($: EngineInterface, run: Run): Promise<void> {
   if (run.dir === undefined) return
   const dir = run.dir
   if (run.kind === 'pingpong') {
@@ -587,7 +587,7 @@ async function restorePage($: $, run: Run): Promise<void> {
   await putPage($, dir, pageData({ ...run, ...(transcript === undefined ? {} : { transcript }) }, await $.clock.now()))
 }
 
-async function openRun($: $, id: string): Promise<void> {
+async function openRun($: EngineInterface, id: string): Promise<void> {
   const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined) return
   const page = `${run.dir}/discussion.html`
@@ -609,11 +609,11 @@ function savedLines(run: Run): string[] {
   ].filter(Boolean)
 }
 
-async function ensureAgentType($: $, seat: Seat): Promise<string> {
+async function ensureAgentType($: EngineInterface, seat: Seat): Promise<string> {
   const name = agentTypeName(seat)
   if (!registeredTypes.has(name)) {
     await $.agent.register({
-      name,
+      name: name,
       description: `Read-only panel seat on ${seat.model} at ${seat.effort} effort`,
       prompt: SEAT_SYSTEM_PROMPT,
       model: MODELS[seat.model],
@@ -627,20 +627,20 @@ async function ensureAgentType($: $, seat: Seat): Promise<string> {
   return `${PLUGIN}:${name}`
 }
 
-async function patchRun($: $, id: string, fn: (run: Run) => Run): Promise<Run | undefined> {
+async function patchRun($: EngineInterface, id: string, fn: (run: Run) => Run): Promise<Run | undefined> {
   const written = await changeRuns($, list => list.map(run => (run.id === id ? fn(run) : run)))
 
   return written.find(run => run.id === id)
 }
 
-async function patchSeat($: $, id: string, index: number, patch: Partial<Seat>): Promise<Run | undefined> {
+async function patchSeat($: EngineInterface, id: string, index: number, patch: Partial<Seat>): Promise<Run | undefined> {
   return patchRun($, id, run => ({
     ...run,
     seats: run.seats.map((seat, i) => (i === index ? { ...seat, ...patch } : seat)),
   }))
 }
 
-async function claimStep($: $, id: string, from: Phase, to: Phase, isReady: (run: Run) => boolean): Promise<Run | undefined> {
+async function claimStep($: EngineInterface, id: string, from: Phase, to: Phase, isReady: (run: Run) => boolean): Promise<Run | undefined> {
   const token = crypto.randomUUID()
   const run = await patchRun($, id, current =>
     current.phase === from && isReady(current) ? { ...current, phase: to, claim: token } : current,
@@ -649,7 +649,7 @@ async function claimStep($: $, id: string, from: Phase, to: Phase, isReady: (run
   return run?.claim === token ? run : undefined
 }
 
-async function claimRound($: $, id: string, round: number): Promise<Run | undefined> {
+async function claimRound($: EngineInterface, id: string, round: number): Promise<Run | undefined> {
   const token = crypto.randomUUID()
   const run = await patchRun($, id, current =>
     current.kind === 'panel' && (current.phase === 'drafting' || current.phase === 'discussing') && Math.max(current.round, 1) === round && current.seats.every(isSettled)
@@ -660,7 +660,7 @@ async function claimRound($: $, id: string, round: number): Promise<Run | undefi
   return run?.claim === token ? run : undefined
 }
 
-async function spawnSeat($: $, run: Run, index: number, prompt: string): Promise<void> {
+async function spawnSeat($: EngineInterface, run: Run, index: number, prompt: string): Promise<void> {
   const seat = run.seats[index]
   if (!seat) return
   try {
@@ -678,13 +678,13 @@ async function spawnSeat($: $, run: Run, index: number, prompt: string): Promise
   }
 }
 
-async function failSeat($: $, id: string, index: number, reason: string): Promise<void> {
+async function failSeat($: EngineInterface, id: string, index: number, reason: string): Promise<void> {
   const run = await patchSeat($, id, index, { status: 'failed', answer: `(failed: ${reason})` })
   await writePage($, id)
   if (run) await advance($, run)
 }
 
-async function continueSeat($: $, run: Run, index: number, agentId: string, text: string): Promise<boolean> {
+async function continueSeat($: EngineInterface, run: Run, index: number, agentId: string, text: string): Promise<boolean> {
   await patchSeat($, run.id, index, { status: 'working', startedAt: await $.clock.now() })
   resuming += 1
   const sent = await $.session.send({ to: { agentId }, text }).catch(() => ({ isDelivered: false }))
@@ -698,7 +698,7 @@ async function continueSeat($: $, run: Run, index: number, agentId: string, text
   return false
 }
 
-async function askSeat($: $, run: Run, index: number, brief: (isContinued: boolean) => string): Promise<void> {
+async function askSeat($: EngineInterface, run: Run, index: number, brief: (isContinued: boolean) => string): Promise<void> {
   const agentId = run.seats[index]?.agentId
   if (agentId !== undefined && (await continueSeat($, run, index, agentId, brief(true)))) return
   await spawnSeat($, run, index, brief(false))
@@ -706,7 +706,7 @@ async function askSeat($: $, run: Run, index: number, brief: (isContinued: boole
 
 type Launch = { seats: Seat[]; question: string; rounds: number; brief?: { name: string; text: string }; notes: string[]; warnings: string[] }
 
-async function startRun($: $, kind: RunKind, launch: Launch, config: Config): Promise<Run> {
+async function startRun($: EngineInterface, kind: RunKind, launch: Launch, config: Config): Promise<Run> {
   const { seats, question, rounds, brief } = launch
   const opened: Run = {
     id: crypto.randomUUID().slice(0, 6),
@@ -743,7 +743,7 @@ function isSettled(seat: Seat): boolean {
   return seat.status === 'done' || seat.status === 'failed'
 }
 
-async function finish($: $, run: Run, phase: Phase, text: string, outcome?: string): Promise<void> {
+async function finish($: EngineInterface, run: Run, phase: Phase, text: string, outcome?: string): Promise<void> {
   const endedAt = await $.clock.now()
   const saved = savedLines((await patchRun($, run.id, current => ({ ...current, phase, endedAt, ...(outcome === undefined ? {} : { outcome }) }))) ?? run)
   await writePage($, run.id)
@@ -760,7 +760,7 @@ async function finish($: $, run: Run, phase: Phase, text: string, outcome?: stri
   })
 }
 
-async function submit($: $, text: string): Promise<boolean> {
+async function submit($: EngineInterface, text: string): Promise<boolean> {
   try {
     await $.prompt.submit({ text })
     return true
@@ -794,7 +794,7 @@ ${seatList(run.seats)}`
   }`
 }
 
-async function advancePanel($: $, run: Run): Promise<void> {
+async function advancePanel($: EngineInterface, run: Run): Promise<void> {
   const claimed = await claimRound($, run.id, Math.max(run.round, 1))
   if (!claimed) return
   if (claimed.phase !== 'discussing') {
@@ -809,7 +809,7 @@ async function advancePanel($: $, run: Run): Promise<void> {
   await writePage($, claimed.id)
 }
 
-async function advance($: $, run: Run): Promise<void> {
+async function advance($: EngineInterface, run: Run): Promise<void> {
   if (run.kind === 'panel') {
     await advancePanel($, run)
     return
@@ -967,13 +967,13 @@ function prepare(kind: RunKind, args: string, loaded: Loaded, rounds?: number) {
   }
 }
 
-async function usage($: $, kind: RunKind, config: Config): Promise<string> {
+async function usage($: EngineInterface, kind: RunKind, config: Config): Promise<string> {
   const loaded = await loadPresets($)
 
   return kind === 'panel' ? panelUsage(loaded, await listBriefs($)) : pingpongUsage(loaded)
 }
 
-async function launch($: $, kind: RunKind, args: string, config: Config, rounds?: number): Promise<{ errors: string[] } | { started: string }> {
+async function launch($: EngineInterface, kind: RunKind, args: string, config: Config, rounds?: number): Promise<{ errors: string[] } | { started: string }> {
   const loaded = await loadPresets($)
   const prepared = prepare(kind, args, loaded, rounds)
   if (prepared.errors.length > 0) return { errors: [...prepared.errors, ...loaded.notices] }
@@ -1073,7 +1073,7 @@ function presetDetail(name: string, preset: PresetMap[string], warnings: readonl
   ].join('\n')
 }
 
-async function listPresets($: $, config: Config): Promise<string> {
+async function listPresets($: EngineInterface, config: Config): Promise<string> {
   const loaded = await loadPresets($)
   const blocks = await Promise.all(
     Object.entries(loaded.presets).map(async ([name, preset]) => {
@@ -1093,7 +1093,7 @@ async function listPresets($: $, config: Config): Promise<string> {
   return `${groups.join('\n\n')}\n${noticeLines(loaded.notices)}`.trimEnd()
 }
 
-async function showPreset($: $, name: string, config: Config): Promise<string> {
+async function showPreset($: EngineInterface, name: string, config: Config): Promise<string> {
   const loaded = await loadPresets($)
   const preset = Object.hasOwn(loaded.presets, name) ? loaded.presets[name] : undefined
   if (preset === undefined) return `No preset named "${name}". Known presets: ${Object.keys(loaded.presets).join(', ')}.${noticeLines(loaded.notices)}`
@@ -1112,7 +1112,7 @@ function scopeOf(words: readonly string[]): Scope | undefined {
   return scope === 'user' || scope === 'project' ? scope : undefined
 }
 
-async function deletePreset($: $, name: string, words: readonly string[]): Promise<string> {
+async function deletePreset($: EngineInterface, name: string, words: readonly string[]): Promise<string> {
   const scope = scopeOf(words)
   if (scope === undefined) return 'scope must be user or project.'
   const loaded = await loadPresets($)
@@ -1131,7 +1131,7 @@ async function deletePreset($: $, name: string, words: readonly string[]): Promi
   return 'error' in deleted ? deleted.error : `Deleted preset "${name}" from ${deleted.path}.`
 }
 
-async function savePreset($: $, name: string, words: readonly string[], config: Config): Promise<string> {
+async function savePreset($: EngineInterface, name: string, words: readonly string[], config: Config): Promise<string> {
   const scope = scopeOf(words)
   const isForced = words.some(word => word.toLowerCase() === 'force')
   const loaded = await loadPresets($)
@@ -1169,7 +1169,7 @@ async function savePreset($: $, name: string, words: readonly string[], config: 
   return [`Saved preset "${name}" in ${saved.path}:`, seatList(resolved.seats), ...skillLines(resolved.seats), ...parsed.notes, ...shadow, ...resolved.warnings].join('\n')
 }
 
-async function listSkills($: $, filter: string, config: Config): Promise<string> {
+async function listSkills($: EngineInterface, filter: string, config: Config): Promise<string> {
   const loaded = await loadPresets($)
   const roots = await skillRoots($, [...config.skillDirs, ...Object.values(loaded.presets).flatMap(preset => preset.skillDirs ?? [])])
   if (roots.length === 0) return 'No skill folders are set. Add one to the "Default skill folders" setting under /config, or pass skills=<folder> to /panel-preset save.'
@@ -1197,7 +1197,7 @@ async function listSkills($: $, filter: string, config: Config): Promise<string>
   return blocks.join('\n\n')
 }
 
-async function presetCommand($: $, args: string, config: Config): Promise<string> {
+async function presetCommand($: EngineInterface, args: string, config: Config): Promise<string> {
   const [sub = 'help', name = '', ...words] = args.trim().split(/\s+/).filter(Boolean)
   switch (sub.toLowerCase()) {
     case 'list':
@@ -1233,7 +1233,7 @@ const liveTokens = new Map<string, number>()
 let textSize = 0
 let ticker: { cancel: () => void } | undefined
 
-function startTicker($: $): void {
+function startTicker($: EngineInterface): void {
   ticker ??= $.clock.every(250, () => $.ui.invalidate('ui.render'))
 }
 
@@ -1243,7 +1243,7 @@ function noteStream(agentId: string, kind: 'text' | 'thinking', text: string, is
   else streams.set(agentId, { text: `${isFirstText ? '' : current.text}${text}`.slice(-STREAM_MAX), isThinking: false })
 }
 
-function cycleTextSize($: $): void {
+function cycleTextSize($: EngineInterface): void {
   textSize = (textSize + 1) % TEXT_SIZES.length
   $.ui.invalidate('ui.render')
 }
@@ -1427,7 +1427,7 @@ function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: numb
   )
 }
 
-async function noteActivity($: $, agentId: string, activity: string): Promise<void> {
+async function noteActivity($: EngineInterface, agentId: string, activity: string): Promise<void> {
   const isSeat = (seat: Seat) => seat.agentId === agentId && seat.status === 'working'
   if (!(await readRuns($)).some(run => isLive(run) && run.seats.some(isSeat))) return
 
@@ -1437,7 +1437,7 @@ async function noteActivity($: $, agentId: string, activity: string): Promise<vo
 // The engine resumes a finished seat only while its agent type is offered, and the types are otherwise hidden from the main model.
 let resuming = 0
 
-async function stopRun($: $, id: string): Promise<string> {
+async function stopRun($: EngineInterface, id: string): Promise<string> {
   const live = [...(await readRuns($))].reverse().filter(isLive)
   const run = id === '' ? live[0] : live.find(one => one.id === id)
   if (!run) return id === '' ? 'No run is in progress.' : `No run "${id}" is in progress.`
