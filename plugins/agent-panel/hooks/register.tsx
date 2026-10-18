@@ -76,14 +76,9 @@ function readConfig(options: PluginOptions): Config {
 
 const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
 
-async function readRuns($: EngineInterface): Promise<Run[]> {
-  const held = await $.state.get(RUNS)
-
-  return held.value ?? []
-}
-
 async function findRun($: EngineInterface, id: string): Promise<Run | undefined> {
-  const list = await readRuns($)
+  const held = await $.state.get(RUNS)
+  const list = held.value ?? []
 
   return list.find(one => one.id === id)
 }
@@ -767,7 +762,8 @@ async function finish($: EngineInterface, run: Run, phase: Phase, text: string, 
   const saved = savedLines(ended ?? run)
   await writePage($, run.id)
   await syncHistory($, run.id)
-  const list = await readRuns($)
+  const held = await $.state.get(RUNS)
+  const list = held.value ?? []
   if (!list.some(isLive)) stopTicker()
   $.ui.status(undefined)
   $.ui.toast(`${run.kind} ${run.id} ${phase === 'failed' ? 'failed' : 'finished'}`)
@@ -1451,7 +1447,8 @@ function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: numb
 
 async function noteActivity($: EngineInterface, agentId: string, activity: string): Promise<void> {
   const isSeat = (seat: Seat) => seat.agentId === agentId && seat.status === 'working'
-  const list = await readRuns($)
+  const held = await $.state.get(RUNS)
+  const list = held.value ?? []
   if (!list.some(run => isLive(run) && run.seats.some(isSeat))) return
 
   await changeRuns($, list => list.map(run => ({ ...run, seats: run.seats.map(seat => (isSeat(seat) ? { ...seat, steps: (seat.steps ?? 0) + 1, activity } : seat)) })))
@@ -1461,7 +1458,8 @@ async function noteActivity($: EngineInterface, agentId: string, activity: strin
 let resuming = 0
 
 async function stopRun($: EngineInterface, id: string): Promise<string> {
-  const list = await readRuns($)
+  const held = await $.state.get(RUNS)
+  const list = held.value ?? []
   const live = [...list].reverse().filter(isLive)
   const run = id === '' ? live[0] : live.find(one => one.id === id)
   if (!run) return id === '' ? 'No run is in progress.' : `No run "${id}" is in progress.`
@@ -1555,7 +1553,8 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     if (e.origin?.kind !== 'task-notification') return next(e)
-    const list = await readRuns($)
+    const held = await $.state.get(RUNS)
+    const list = held.value ?? []
     const note = collectedNote(list, e.text)
 
     if (note === undefined) return next(e)
@@ -1689,7 +1688,9 @@ export const register: Register = (on, options) => {
     const counted = liveTokens.get(e.agentId) ?? 0
     liveTokens.delete(e.agentId)
 
-    const list = await readRuns($)
+    const held = await $.state.get(RUNS)
+
+    const list = held.value ?? []
     for (const run of list) {
       const index = run.seats.findIndex(seat => seat.agentId === e.agentId && seat.status === 'working')
       if (index === -1) continue
@@ -1730,7 +1731,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const kit = $.ui.resolve(e)
     const { Box, Text, Button } = kit
-    const all = await readRuns($)
+    const held = await $.state.get(RUNS)
+    const all = held.value ?? []
     const list = [...all].reverse()
     if (!list.some(isLive)) stopTicker()
     if (list.length === 0) return <Text dimColor>No panels yet. Try /panel or /pingpong.</Text>
