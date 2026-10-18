@@ -74,13 +74,11 @@ function readConfig(options: PluginOptions): Config {
   }
 }
 
-const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
-
 async function changeRuns($: EngineInterface, change: (list: Run[]) => Run[]): Promise<Run[]> {
   for (;;) {
-    const held = await $.state.get(RUNS)
+    const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const next = change(held.value ?? [])
-    const written = await $.state.set(RUNS, next, { ifVersion: held.version })
+    const written = await $.state.set({ plugin: 'agent-panel', key: 'runs' }, next, { ifVersion: held.version })
     if (written.isSet) return next
   }
 }
@@ -483,7 +481,7 @@ async function putPage($: EngineInterface, dir: string, data: AnyPage): Promise<
 }
 
 async function writePageNow($: EngineInterface, id: string): Promise<void> {
-  const stored = await $.state.get(RUNS)
+  const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined || run.isReported === true) return
   try {
@@ -544,7 +542,7 @@ async function scanHistory($: EngineInterface, root: string, stamp: string): Pro
 let historyQueue: Promise<void> = Promise.resolve()
 
 async function syncHistoryNow($: EngineInterface, id: string): Promise<void> {
-  const stored = await $.state.get(RUNS)
+  const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined) return
   const root = run.dir.slice(0, run.dir.lastIndexOf('/'))
@@ -590,7 +588,7 @@ async function restorePage($: EngineInterface, run: Run): Promise<void> {
 }
 
 async function openRun($: EngineInterface, id: string): Promise<void> {
-  const stored = await $.state.get(RUNS)
+  const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined) return
   const page = `${run.dir}/discussion.html`
@@ -743,7 +741,7 @@ async function startRun($: EngineInterface, kind: RunKind, launch: Launch, confi
   await writePage($, run.id)
   await syncHistory($, run.id)
 
-  const stored = await $.state.get(RUNS)
+  const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
 
   const current = (stored.value ?? []).find(one => one.id === run.id)
 
@@ -760,7 +758,7 @@ async function finish($: EngineInterface, run: Run, phase: Phase, text: string, 
   const saved = savedLines(ended ?? run)
   await writePage($, run.id)
   await syncHistory($, run.id)
-  const held = await $.state.get(RUNS)
+  const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const list = held.value ?? []
   if (!list.some(isLive)) stopTicker()
   $.ui.status(undefined)
@@ -1386,7 +1384,7 @@ function drawSeat(kit: Kit, run: Run, index: number, now: number, inner: number,
   )
 }
 
-function drawCard(kit: Kit, run: Run, now: number, width: number, rows: number, onOpen: () => void) {
+function drawCard(kit: Kit, run: Run, now: number, width: number, rows: number, onOpen: () => Promise<void>) {
   const { Box, Text, Button } = kit
   const inner = width - 4
   const badge = runBadge(run, now)
@@ -1419,7 +1417,7 @@ function drawCard(kit: Kit, run: Run, now: number, width: number, rows: number, 
   )
 }
 
-function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: number, onOpen: () => void) {
+function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: number, onOpen: () => Promise<void>) {
   const time = runTime(run, now)
   const clock = time === undefined ? '' : ` ${formatDuration(time)}`
   const head = ` ${run.kind} `
@@ -1445,7 +1443,7 @@ function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: numb
 
 async function noteActivity($: EngineInterface, agentId: string, activity: string): Promise<void> {
   const isSeat = (seat: Seat) => seat.agentId === agentId && seat.status === 'working'
-  const held = await $.state.get(RUNS)
+  const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const list = held.value ?? []
   if (!list.some(run => isLive(run) && run.seats.some(isSeat))) return
 
@@ -1456,7 +1454,7 @@ async function noteActivity($: EngineInterface, agentId: string, activity: strin
 let resuming = 0
 
 async function stopRun($: EngineInterface, id: string): Promise<string> {
-  const held = await $.state.get(RUNS)
+  const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
   const list = held.value ?? []
   const live = [...list].reverse().filter(isLive)
   const run = id === '' ? live[0] : live.find(one => one.id === id)
@@ -1551,7 +1549,7 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     if (e.origin?.kind !== 'task-notification') return next(e)
-    const held = await $.state.get(RUNS)
+    const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const list = held.value ?? []
     const note = collectedNote(list, e.text)
 
@@ -1560,7 +1558,11 @@ export const register: Register = (on, options) => {
     return { drop: note }
   })
 
-  on('command.run', { command: 'panel-stop' }, async ($, e) => ({ text: await stopRun($, e.args.trim()) }))
+  on('command.run', { command: 'panel-stop' }, async ($, e) => {
+    const text = await stopRun($, e.args.trim())
+
+    return { text }
+  })
 
   on('tool.call', async ($, e, next) => {
     if (e.agentId !== undefined) await noteActivity($, e.agentId, activityOf(e.tool, e as unknown as Record<string, unknown>)).catch(() => undefined)
@@ -1619,7 +1621,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__verdict' }, async ($, e) => {
     const runId = String((e as unknown as { runId?: unknown }).runId ?? '')
-    const stored = await $.state.get(RUNS)
+    const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const run = (stored.value ?? []).find(one => one.id === runId)
     if (!run) return { deny: `No panel or ping-pong run "${runId}".` }
     if (run.dir === undefined || run.page === undefined) return { deny: `Run ${run.id} has no page because its answers were not saved to files. Give the ${run.kind === 'panel' ? 'synthesis' : 'plan'} in the chat instead.` }
@@ -1640,7 +1642,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong_merge' }, async ($, e) => {
     const input = e as unknown as { runId: string; plan: string }
-    const stored = await $.state.get(RUNS)
+    const stored = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const run = (stored.value ?? []).find(one => one.id === input.runId)
     if (!run || run.kind !== 'pingpong') return { deny: `No ping-pong run "${input.runId}".` }
 
@@ -1653,7 +1655,7 @@ export const register: Register = (on, options) => {
       await askSeat($, started, 0, isContinued => challengeBrief(input.plan, 1, started.rounds, isContinued))
       await writePage($, run.id)
     }
-    const storedAfter = await $.state.get(RUNS)
+    const storedAfter = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const after = (storedAfter.value ?? []).find(one => one.id === run.id)
     if (after?.phase === 'failed') {
       await patchRun($, run.id, current => ({ ...current, isReported: true }))
@@ -1689,7 +1691,7 @@ export const register: Register = (on, options) => {
     const counted = liveTokens.get(e.agentId) ?? 0
     liveTokens.delete(e.agentId)
 
-    const held = await $.state.get(RUNS)
+    const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
 
     const list = held.value ?? []
     for (const run of list) {
@@ -1713,9 +1715,17 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  on('command.run', { command: 'panel-preset' }, async ($, e) => ({ text: await presetCommand($, e.args, config) }))
+  on('command.run', { command: 'panel-preset' }, async ($, e) => {
+    const text = await presetCommand($, e.args, config)
 
-  on('command.run', { command: 'panel-design' }, async ($, e) => ({ text: await designCommand($, e.args) }))
+    return { text }
+  })
+
+  on('command.run', { command: 'panel-design' }, async ($, e) => {
+    const text = await designCommand($, e.args)
+
+    return { text }
+  })
 
   on('command.run', { command: 'panel-view' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Agent panel' })
@@ -1732,7 +1742,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const kit = $.ui.resolve(e)
     const { Box, Text, Button } = kit
-    const held = await $.state.get(RUNS)
+    const held = await $.state.get({ plugin: 'agent-panel', key: 'runs' })
     const all = held.value ?? []
     const list = [...all].reverse()
     if (!list.some(isLive)) stopTicker()
@@ -1762,9 +1772,9 @@ export const register: Register = (on, options) => {
             <Text color="suggestion">{`≡ text ${size === undefined ? 'auto' : size === 0 ? 'off' : `${size} lines`}`}</Text>
           </Button>
         </Box>
-        {cards.map(run => drawCard(kit, run, now, width, isLive(run) ? rows : Math.min(rows, 2), () => void openRun($, run.id)))}
+        {cards.map(run => drawCard(kit, run, now, width, isLive(run) ? rows : Math.min(rows, 2), () => openRun($, run.id)))}
         {earlier.length === 0 ? null : <Text dimColor>{` earlier`}</Text>}
-        {earlier.map(run => drawLine(kit, run, now, width, () => void openRun($, run.id)))}
+        {earlier.map(run => drawLine(kit, run, now, width, () => openRun($, run.id)))}
       </Box>
     )
   })
