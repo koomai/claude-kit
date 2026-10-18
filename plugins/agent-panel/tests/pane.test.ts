@@ -8,7 +8,7 @@ const cells = (run: Partial<Run>) => pingpongSteps({ ...RUN, ...run }).map(step 
 
 test('durations and token counts are written short', () => {
   expect([0, 8_400, 62_000, 3_840_000].map(formatDuration)).toEqual(['0s', '8s', '1m02s', '1h04m'])
-  expect([850, 1_240, 28_300, 1_300_000].map(formatTokens)).toEqual(['850', '1.2k', '28k', '1.3M'])
+  expect([850, 1_000, 1_240, 9_960, 28_300, 999_400, 999_600, 1_000_000, 1_300_000, 15_000_000].map(formatTokens)).toEqual(['850', '1k', '1.2k', '10k', '28k', '999k', '1M', '1M', '1.3M', '15M'])
   expect(usageTokens({ input_tokens: 4, output_tokens: 82, cache_read_input_tokens: 8670, model: 'claude-haiku-5-5' })).toBe(8756)
   expect(usageTokens(undefined)).toBe(0)
 })

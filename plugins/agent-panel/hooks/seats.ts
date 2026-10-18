@@ -327,8 +327,10 @@ ${task}
 Write a complete plan: the steps, the files involved (verified paths), risks, and open decisions.`
 }
 
-export function challengeBrief(candidate: string, round: number, rounds: number): string {
-  return `Ping-pong round ${round} of ${rounds}: challenge this candidate plan.
+export function challengeBrief(candidate: string, round: number, rounds: number, isContinued = false): string {
+  const context = !isContinued ? '' : round === 1 ? '\n\nYour draft and the other agent\'s were merged into the candidate below; check it against what you found while drafting.' : '\n\nThe other agent revised the plan after your last challenge. Its revision and the corrections it rejected are below; raise a rejected correction again only with new evidence.'
+
+  return `Ping-pong round ${round} of ${rounds}: challenge this candidate plan.${context}
 
 Find concrete errors, gaps and risks, each with evidence (file:line). Do not rewrite the plan. If nothing material is wrong, answer with PASS alone on the first line; that ends the rounds.
 
@@ -343,8 +345,10 @@ export function isPass(answer: string): boolean {
   return /^[\s*_`#]*PASS[\s*_`.!]*$/.test(firstLine)
 }
 
-export function integrateBrief(candidate: string, challenge: string, round: number, rounds: number): string {
-  return `Ping-pong round ${round} of ${rounds}: another agent challenged the candidate plan below.
+export function integrateBrief(candidate: string, challenge: string, round: number, rounds: number, isContinued = false): string {
+  const context = !isContinued ? '' : round === 1 ? ' It merges your draft with that agent\'s draft.' : ' It is your last revision.'
+
+  return `Ping-pong round ${round} of ${rounds}: another agent challenged the candidate plan below.${context}
 
 Check each correction against the code or files it cites and integrate only the ones the evidence supports. Reply with the full revised plan, then a section "Rejected corrections" that lists each correction you rejected and why.
 
@@ -505,10 +509,10 @@ export function peerName(seat: Pick<Seat, 'role' | 'skills' | 'folderSkills' | '
   return notes.length === 0 ? `Seat ${index + 1}` : `Seat ${index + 1} (${notes.join(', ')})`
 }
 
-export function collectedNote(runs: readonly Pick<Run, 'id' | 'seats'>[], notification: string): string | undefined {
+export function collectedNote(runs: readonly Pick<Run, 'id' | 'kind' | 'seats'>[], notification: string): string | undefined {
   for (const run of runs) {
     const index = run.seats.findIndex(seat => seat.agentId !== undefined && notification.includes(`<task-id>${seat.agentId}</task-id>`))
-    if (index !== -1) return `panel ${run.id} has seat ${index + 1}'s reply.`
+    if (index !== -1) return run.kind === 'pingpong' ? `ping-pong ${run.id} has seat ${index === 0 ? 'A' : 'B'}'s reply.` : `panel ${run.id} has seat ${index + 1}'s reply.`
   }
 
   return undefined

@@ -4,6 +4,7 @@ import {
   FALLBACK_PRESETS,
   agentTypeName,
   artifactOf,
+  challengeBrief,
   clipAnswer,
   closeRound,
   collectedNote,
@@ -11,6 +12,7 @@ import {
   excerptOf,
   gitRefusal,
   ignoredSkillFeatures,
+  integrateBrief,
   isFolderSkillName,
   isNoChange,
   isPass,
@@ -269,6 +271,7 @@ test("a finished seat's task notification is named by its panel and seat, and an
   expect(collectedNote(runs, '<task-notification>\n<task-id>a2</task-id>\n<status>completed</status>')).toBe("panel ab12cd has seat 2's reply.")
   expect(collectedNote(runs, '<task-notification>\n<task-id>a22</task-id>')).toBeUndefined()
   expect(collectedNote([], '<task-id>a2</task-id>')).toBeUndefined()
+  expect(collectedNote([{ ...panelOf({ seats: TRIO }), kind: 'pingpong' }], '<task-id>a1</task-id>')).toBe("ping-pong ab12cd has seat A's reply.")
 })
 
 test('closing round 1 of 1 ends the run, and fewer than two answers ends a discussion before it starts', () => {
@@ -436,4 +439,13 @@ test("a seat's excerpt is what changed when it moved, and otherwise where it sta
   expect(excerptOf('1. **Answer:** Index it.\n\n2. **Evidence:** the plan.', false)).toEqual({ label: 'Answer', text: 'Index it.' })
   expect(excerptOf('NO CHANGE', true)).toBeUndefined()
   expect(excerptOf('Plain words.', false)).toEqual({ label: '', text: 'Plain words.' })
+})
+
+test('a continued ping-pong seat is told how the plan relates to its own work, and a fresh one is not', () => {
+  expect(challengeBrief('PLAN', 1, 2)).not.toContain('Your draft')
+  expect(challengeBrief('PLAN', 1, 2, true)).toContain("Your draft and the other agent's were merged into the candidate below")
+  expect(challengeBrief('PLAN', 2, 2, true)).toContain('raise a rejected correction again only with new evidence')
+  expect(integrateBrief('PLAN', 'FIX', 1, 2)).not.toContain('your')
+  expect(integrateBrief('PLAN', 'FIX', 1, 2, true)).toContain("It merges your draft with that agent's draft.")
+  expect(integrateBrief('PLAN', 'FIX', 2, 2, true)).toContain('It is your last revision.')
 })

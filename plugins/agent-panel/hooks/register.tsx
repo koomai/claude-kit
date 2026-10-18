@@ -684,10 +684,10 @@ async function continueSeat($: $, run: Run, index: number, agentId: string, text
   return false
 }
 
-async function askSeat($: $, run: Run, index: number): Promise<void> {
+async function askSeat($: $, run: Run, index: number, brief: (isContinued: boolean) => string): Promise<void> {
   const agentId = run.seats[index]?.agentId
-  if (agentId !== undefined && (await continueSeat($, run, index, agentId, replyBrief(run, index, true)))) return
-  await spawnSeat($, run, index, replyBrief(run, index, false))
+  if (agentId !== undefined && (await continueSeat($, run, index, agentId, brief(true)))) return
+  await spawnSeat($, run, index, brief(false))
 }
 
 type Launch = { seats: Seat[]; question: string; rounds: number; brief?: { name: string; text: string }; notes: string[]; warnings: string[] }
@@ -791,7 +791,7 @@ async function advancePanel($: $, run: Run): Promise<void> {
   const asked = claimed.seats.flatMap((seat, index) => (seat.status === 'starting' ? [index] : []))
   $.ui.status(`panel ${claimed.id}: round ${claimed.round} of ${claimed.rounds}, ${asked.length} agents replying`)
   await writePage($, claimed.id)
-  await Promise.all(asked.map(index => askSeat($, claimed, index)))
+  await Promise.all(asked.map(index => askSeat($, claimed, index, isContinued => replyBrief(claimed, index, isContinued))))
   await writePage($, claimed.id)
 }
 
@@ -846,7 +846,7 @@ Compare both drafts against the code or files they cite and settle factual disag
     if (!claimed) return
     const withChallenge = await patchRun($, run.id, current => ({ ...current, challenges: [...current.challenges, seat.answer ?? ''] }))
     if (withChallenge) {
-      await spawnSeat($, withChallenge, 1, integrateBrief(withChallenge.candidate ?? '', seat.answer ?? '', run.round, run.rounds))
+      await askSeat($, withChallenge, 1, isContinued => integrateBrief(withChallenge.candidate ?? '', seat.answer ?? '', run.round, run.rounds, isContinued))
     }
     await writePage($, run.id)
     return
@@ -875,7 +875,7 @@ Compare both drafts against the code or files they cite and settle factual disag
       return
     }
 
-    await spawnSeat($, next, 0, challengeBrief(next.candidate ?? '', next.round, next.rounds))
+    await askSeat($, next, 0, isContinued => challengeBrief(next.candidate ?? '', next.round, next.rounds, isContinued))
     await writePage($, run.id)
   }
 }
@@ -1204,6 +1204,7 @@ async function presetCommand($: $, args: string, config: Config): Promise<string
 type Kit = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 
 const BAR = 8
+const TOKEN_WIDTH = 10
 const TONE_COLOR: Record<Tone, string | undefined> = { live: 'claude', good: 'success', bad: 'error', warn: 'warning', quiet: undefined, plain: undefined }
 const HELP_STYLE: Record<HelpTone, { color?: string; bold?: boolean; dimColor?: boolean }> = { heading: { bold: true }, command: { color: 'claude' }, option: { color: 'suggestion' }, quiet: { dimColor: true }, error: { color: 'error' }, warning: { color: 'warning' } }
 const STYLED_COMMANDS = ['panel', 'pingpong', 'panel-preset', 'panel-design', 'panel-stop', 'panel-view']
@@ -1215,6 +1216,7 @@ const SEAT_TONE: Record<Seat['status'], Tone> = { starting: 'quiet', working: 'l
 const STREAM_MAX = 6000
 const TEXT_SIZES = [undefined, 0, 2, 5, 10] as const
 const streams = new Map<string, { text: string; isThinking: boolean }>()
+const liveTokens = new Map<string, number>()
 let textSize = 0
 let ticker: { cancel: () => void } | undefined
 
@@ -1295,15 +1297,16 @@ function drawSeat(kit: Kit, run: Run, index: number, now: number, inner: number,
   if (!seat) return null
   const tone = SEAT_TONE[seat.status]
   const time = seatTime(seat, now)
-  const hasTokens = inner >= 50
   const cells = roundCells(run, index, now)
-  const nameWidth = Math.max(8, inner - 5 - BAR - 7 - (hasTokens ? 9 : 0) - (cells.length === 0 ? 0 : cells.length + 1))
+  const nameWidth = Math.max(8, inner - 5 - BAR - 7 - (cells.length === 0 ? 0 : cells.length + 1))
   const color = seatColor(index)
-  const text = seatText(run, seat, inner - 2, rows, now)
+  const tokens = (seat.tokens ?? 0) + (seat.status === 'working' && seat.agentId !== undefined ? (liveTokens.get(seat.agentId) ?? 0) : 0)
+  const spent = inner >= 50 && tokens > 0 ? formatTokens(tokens) : ''
+  const textWidth = inner - (spent === '' ? 0 : TOKEN_WIDTH)
+  const text = seatText(run, seat, textWidth - 2, rows, now)
   const doing = seat.status === 'working' && seat.activity ? [{ text: seat.activity, tone: 'live' as const }] : []
   const chips = fitChips([...seatChips(seat), ...doing], nameWidth)
   const bar = meter(time ?? 0, scale, BAR)
-  const spent = seat.status === 'working' ? (seat.steps ? `${seat.steps} steps` : '') : seat.tokens ? formatTokens(seat.tokens) : ''
 
   return (
     <Box flexDirection="column" key={`${run.id}-seat-${index}`}>
@@ -1330,10 +1333,14 @@ function drawSeat(kit: Kit, run: Run, index: number, now: number, inner: number,
         <Text color={TONE_COLOR[tone]}>{bar.on}</Text>
         <Text dimColor>{bar.off}</Text>
         <Text dimColor={seat.status !== 'working'}>{(time === undefined ? '' : formatDuration(time)).padStart(7)}</Text>
-        {hasTokens ? <Text dimColor>{spent.padStart(9)}</Text> : null}
       </Box>
-      {seat.status === 'failed' ? <Text color="error">{`  ${clip(seat.answer ?? '', inner - 2)}`}</Text> : null}
-      {text === undefined ? null : drawText(kit, `${run.id}-text-${index}`, text.lines, color, text.isDim, text.cursor)}
+      <Box>
+        <Box flexDirection="column" width={textWidth}>
+          {seat.status === 'failed' ? <Text color="error">{`  ${clip(seat.answer ?? '', textWidth - 2)}`}</Text> : null}
+          {text === undefined ? null : drawText(kit, `${run.id}-text-${index}`, text.lines, color, text.isDim, text.cursor)}
+        </Box>
+        {spent === '' ? null : <Text dimColor>{`${spent} tok`.padStart(TOKEN_WIDTH)}</Text>}
+      </Box>
     </Box>
   )
 }
@@ -1584,7 +1591,7 @@ export const register: Register = (on, options) => {
     const started = await patchRun($, run.id, current => ({ ...current, candidate: input.plan, plans: [input.plan], round: 1 }))
     if (started) {
       await saveArtifact($, started, 'candidate', 'Merged candidate plan', input.plan)
-      await spawnSeat($, started, 0, challengeBrief(input.plan, 1, started.rounds))
+      await askSeat($, started, 0, isContinued => challengeBrief(input.plan, 1, started.rounds, isContinued))
       await writePage($, run.id)
     }
     const after = (await read($, runs)).find(one => one.id === run.id)
@@ -1609,14 +1616,18 @@ export const register: Register = (on, options) => {
       }
       yield chunk
     }
+    const result = await stream.result
+    liveTokens.set(agentId, (liveTokens.get(agentId) ?? 0) + usageTokens(result.usage))
 
-    return await stream.result
+    return result
   })
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId === undefined) return result
     streams.delete(e.agentId)
+    const counted = liveTokens.get(e.agentId) ?? 0
+    liveTokens.delete(e.agentId)
 
     const list = await read($, runs)
     for (const run of list) {
@@ -1624,7 +1635,7 @@ export const register: Register = (on, options) => {
       if (index === -1) continue
 
       const isAnswered = e.reason === 'answer' && e.answer.trim() !== ''
-      const spent = { durationMs: (run.seats[index]?.durationMs ?? 0) + e.durationMs, tokens: (run.seats[index]?.tokens ?? 0) + usageTokens(e.usage), activity: '' }
+      const spent = { durationMs: (run.seats[index]?.durationMs ?? 0) + e.durationMs, tokens: (run.seats[index]?.tokens ?? 0) + (usageTokens(e.usage) || counted), activity: '' }
       const updated = await patchSeat($, run.id, index, isAnswered
         ? { status: 'done', answer: e.answer, ...spent }
         : { status: 'failed', answer: `(failed: ${e.reason === 'answer' ? 'empty answer' : e.reason})`, ...spent, ...(e.reason === 'aborted' ? { isInterrupted: true } : {}) })

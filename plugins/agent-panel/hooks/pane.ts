@@ -23,10 +23,9 @@ export function formatDuration(ms: number): string {
 
 export function formatTokens(count: number): string {
   if (count < 1000) return String(count)
-  if (count < 10_000) return `${(count / 1000).toFixed(1)}k`
-  if (count < 1_000_000) return `${Math.round(count / 1000)}k`
+  const [value, unit] = count < 999_500 ? [count / 1000, 'k'] : [count / 1_000_000, 'M']
 
-  return `${(count / 1_000_000).toFixed(1)}M`
+  return `${value < 9.95 ? Math.round(value * 10) / 10 : Math.round(value)}${unit}`
 }
 
 export function meter(value: number, max: number, width: number): { on: string; off: string } {

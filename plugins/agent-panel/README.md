@@ -209,6 +209,8 @@ A ping-pong has these steps:
 4. If seat A has no important correction, it answers PASS. The rounds then stop.
 5. Claude examines the final plan and records a summary. The summary gives the plan in brief, the changes from the rounds and the decisions that are still open.
 
+The plugin continues each seat with its earlier work: seat A challenges with what it learned while it wrote its plan, and seat B changes the plan with what it learned while it wrote its own. If the plugin cannot continue a seat, it starts the seat again with the full plan and the challenge.
+
 The default is 1 round. The maximum is 5 rounds.
 
 ## The pane
@@ -217,7 +219,7 @@ To open the pane, type `/panel-view`. The pane shows one card for each run. A ca
 
 - Its status.
 - Its time.
-- The number of tokens that it used.
+- The number of tokens that it used, under its time. The number grows while the seat works.
 - The text that it writes now.
 
 The card of the newest run has a link to its page: "Open the discussion page" or "Open the plan page". Each earlier run is a row. Click a row to open the page of that run.
@@ -405,6 +407,11 @@ You can also ask Claude in plain English, for example "get an agent panel on thi
 | `pingpong` | Starts a ping-pong. |
 | `pingpong_merge` | Gives the merged plan back to the ping-pong, which then starts the rounds. |
 | `verdict` | Records the verdict on the page. |
+
+## Credits
+
+- [counselors](https://github.com/aarondfrancis/counselors) by Aaron Francis gave the panel its ideas: one question sent to several read-only agents at once, rounds in which each agent reads the others, and review presets such as bugs, security, regressions and API contracts.
+- [Jam Session](https://jamsession.jamon.dev/) by Jamon Holmgren gave ping-pong planning its shape: two independent drafts, one merged plan, then rounds in which one agent challenges the plan and the other keeps only the corrections that the evidence supports.
 
 ## Development
 
