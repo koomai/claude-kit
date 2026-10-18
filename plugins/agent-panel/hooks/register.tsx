@@ -710,8 +710,8 @@ async function askSeat($: EngineInterface, run: Run, index: number, brief: (isCo
 
 type Launch = { seats: Seat[]; question: string; rounds: number; brief?: { name: string; text: string }; notes: string[]; warnings: string[] }
 
-async function startRun($: EngineInterface, kind: RunKind, launch: Launch, config: Config): Promise<Run> {
-  const { seats, question, rounds, brief } = launch
+async function startRun($: EngineInterface, kind: RunKind, request: Launch, config: Config): Promise<Run> {
+  const { seats, question, rounds, brief } = request
   const opened: Run = {
     id: crypto.randomUUID().slice(0, 6),
     kind,
@@ -723,8 +723,8 @@ async function startRun($: EngineInterface, kind: RunKind, launch: Launch, confi
     challenges: [],
     startedAt: await $.clock.now(),
     ...(brief === undefined ? {} : { brief: brief.name, briefText: brief.text }),
-    ...(launch.notes.length === 0 ? {} : { notes: launch.notes }),
-    ...(launch.warnings.length === 0 ? {} : { warnings: launch.warnings }),
+    ...(request.notes.length === 0 ? {} : { notes: request.notes }),
+    ...(request.warnings.length === 0 ? {} : { warnings: request.warnings }),
   }
   const record = await openRecord($, opened, config)
   const run = { ...opened, ...record }
