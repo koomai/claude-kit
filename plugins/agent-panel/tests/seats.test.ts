@@ -10,6 +10,7 @@ import {
   collectedNote,
   costLine,
   excerptOf,
+  gitHelperOptions,
   gitRefusal,
   ignoredSkillFeatures,
   integrateBrief,
@@ -124,6 +125,11 @@ test('each saved answer is named for its place in the run', () => {
 test('git is limited to read commands that cannot write a file', () => {
   expect(gitRefusal('diff', ['HEAD~2', '--', 'src'])).toBe(undefined)
   expect(gitRefusal('commit', [])).toContain('not available')
+  expect(gitRefusal('diff', ['--ext-diff'])).toContain('run other programs')
+  expect(gitRefusal('log', ['-p', '--textconv'])).toContain('run other programs')
+  expect(gitHelperOptions('diff')).toEqual(['--no-ext-diff', '--no-textconv'])
+  expect(gitHelperOptions('blame')).toEqual(['--no-textconv'])
+  expect(gitHelperOptions('status')).toEqual([])
   expect(gitRefusal('show', ['--output', 'x'])).toContain('read-only')
   expect(gitRefusal('log', [3])).toContain('list of strings')
 })

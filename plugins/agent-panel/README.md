@@ -437,7 +437,7 @@ The plugin does not write settings files, instruction files such as `CLAUDE.md`,
 
 ### Which programs it runs
 
-- `git`, with one of `status`, `diff`, `log`, `show` or `blame` and the arguments that a seat gives. This is the `git` tool of the seats, so they can read the history of the code under review. The plugin refuses every other git command and the `--output` option, which writes a file. It adds `--no-pager`.
+- `git`, with one of `status`, `diff`, `log`, `show` or `blame` and the arguments that a seat gives. This is the `git` tool of the seats, so they can read the history of the code under review. The plugin refuses every other git command, the `--output` option, which writes a file, and the `--ext-diff` and `--textconv` options, which run other programs. It adds `--no-pager`, and `--no-ext-diff` and `--no-textconv`, so that git does not run a diff tool or a text converter from your git configuration.
 - `open` on macOS, or `xdg-open` on Linux, with the path of a saved page. The plugin runs it only when you click a run in the pane, to open its page in your browser.
 
 ### What it sends, and where

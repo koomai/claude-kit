@@ -387,10 +387,17 @@ export function artifactOf(run: Pick<Run, 'kind' | 'phase' | 'round' | 'rounds' 
   return { file: `round-${run.round}-plan`, title: `Round ${run.round} revised plan (${label})` }
 }
 
+export function gitHelperOptions(command: string): string[] {
+  if (command === 'blame') return ['--no-textconv']
+
+  return command === 'status' ? [] : ['--no-ext-diff', '--no-textconv']
+}
+
 export function gitRefusal(command: string, args: readonly unknown[]): string | undefined {
   if (!(GIT_COMMANDS as readonly string[]).includes(command)) return `git ${command} is not available here. Use one of: ${GIT_COMMANDS.join(', ')}.`
   if (args.some(arg => typeof arg !== 'string')) return 'args must be a list of strings.'
   if (args.some(arg => /^--output(=|$)/.test(arg as string))) return '--output writes a file; this tool is read-only.'
+  if (args.some(arg => /^--(ext-diff|textconv)$/.test(arg as string))) return '--ext-diff and --textconv run other programs; this tool runs only git.'
 
   return undefined
 }

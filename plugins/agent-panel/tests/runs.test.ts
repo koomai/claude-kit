@@ -173,7 +173,7 @@ test('the git tool runs read commands by argv and refuses the rest', async ($, o
 
   const diff = await $.tool.call({ tool: 'mcp__agent-panel__git', command: 'diff', args: ['HEAD~1', '--stat'] } as never)
   expect(diff.result).toContain('diff --git')
-  expect(fake.git[0]).toEqual(['git', '--no-pager', 'diff', 'HEAD~1', '--stat'])
+  expect(fake.git[0]).toEqual(['git', '--no-pager', 'diff', '--no-ext-diff', '--no-textconv', 'HEAD~1', '--stat'])
 
   expect((await $.tool.call({ tool: 'mcp__agent-panel__git', command: 'push' } as never)).deny).toContain('git push is not available')
   expect((await $.tool.call({ tool: 'mcp__agent-panel__git', command: 'log', args: ['--output=x'] } as never)).deny).toContain('read-only')

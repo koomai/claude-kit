@@ -17,6 +17,7 @@ import {
   costLine,
   draftBrief,
   excerptOf,
+  gitHelperOptions,
   gitRefusal,
   ignoredSkillFeatures,
   integrateBrief,
@@ -1587,7 +1588,7 @@ export const register: Register = (on, options) => {
     const refusal = gitRefusal(input.command, args)
     if (refusal !== undefined) return { deny: refusal }
 
-    const ran = await $.process.run(['git', '--no-pager', input.command, ...args])
+    const ran = await $.process.run(['git', '--no-pager', input.command, ...gitHelperOptions(input.command), ...args])
     if (ran.exitCode !== 0) return { result: `git exited ${ran.exitCode}: ${ran.stderr.trim()}` }
     if (ran.stdout.length > GIT_OUTPUT_LIMIT) return { result: `${ran.stdout.slice(0, GIT_OUTPUT_LIMIT)}\n(cut at ${GIT_OUTPUT_LIMIT} characters; narrow the command)` }
 
