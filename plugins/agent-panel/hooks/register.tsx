@@ -1,4 +1,3 @@
-import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { FolderSkill, Phase, PresetMap, PresetSource, RoundEntry, Run, RunKind, Seat } from '../types'
@@ -75,7 +74,21 @@ function readConfig(options: PluginOptions): Config {
   }
 }
 
-const runs = atom({ plugin: 'agent-panel', key: 'runs' } as const, [] as Run[])
+const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
+
+async function readRuns($: $): Promise<Run[]> {
+  const { value = [] } = await $.state.get(RUNS)
+
+  return value
+}
+
+async function changeRuns($: $, change: (list: Run[]) => Run[]): Promise<Run[]> {
+  for (;;) {
+    const held = await $.state.get(RUNS)
+    const next = change(held.value ?? [])
+    if ((await $.state.set(RUNS, next, { ifVersion: held.version })).isSet) return next
+  }
+}
 
 const HELP_ARGS = ['', 'help', '--help']
 const PRESET_INPUT = { type: 'string', description: 'The name of one preset in place of seats: deep, quick, duo, review, or one the user saved with /panel-preset' }
@@ -469,7 +482,7 @@ async function putPage($: $, dir: string, data: AnyPage): Promise<void> {
 }
 
 async function writePageNow($: $, id: string): Promise<void> {
-  const run = (await read($, runs)).find(one => one.id === id)
+  const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined || run.isReported === true) return
   try {
     await putPage($, run.dir, pageFor(run, await $.clock.now()))
@@ -529,7 +542,7 @@ async function scanHistory($: $, root: string, stamp: string): Promise<History> 
 let historyQueue: Promise<void> = Promise.resolve()
 
 async function syncHistoryNow($: $, id: string): Promise<void> {
-  const run = (await read($, runs)).find(one => one.id === id)
+  const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined) return
   const root = run.dir.slice(0, run.dir.lastIndexOf('/'))
   const assets = await loadPageAssets($)
@@ -574,7 +587,7 @@ async function restorePage($: $, run: Run): Promise<void> {
 }
 
 async function openRun($: $, id: string): Promise<void> {
-  const run = (await read($, runs)).find(one => one.id === id)
+  const run = (await readRuns($)).find(one => one.id === id)
   if (!run || run.dir === undefined) return
   const page = `${run.dir}/discussion.html`
   if (!isLive(run) && !(await $.fs.exists(page))) await restorePage($, run).catch(() => undefined)
@@ -605,7 +618,7 @@ async function ensureAgentType($: $, seat: Seat): Promise<string> {
       model: MODELS[seat.model],
       effort: seat.effort,
       tools: READ_ONLY_TOOLS,
-      ...(seat.skills.length > 0 ? { skills: seat.skills } : {}),
+      skills: seat.skills,
     })
     registeredTypes.add(name)
   }
@@ -614,7 +627,7 @@ async function ensureAgentType($: $, seat: Seat): Promise<string> {
 }
 
 async function patchRun($: $, id: string, fn: (run: Run) => Run): Promise<Run | undefined> {
-  const written = await update($, runs, list => list.map(run => (run.id === id ? fn(run) : run)))
+  const written = await changeRuns($, list => list.map(run => (run.id === id ? fn(run) : run)))
 
   return written.find(run => run.id === id)
 }
@@ -709,7 +722,7 @@ async function startRun($: $, kind: RunKind, launch: Launch, config: Config): Pr
     ...(launch.warnings.length === 0 ? {} : { warnings: launch.warnings }),
   }
   const run = { ...opened, ...(await openRecord($, opened, config)) }
-  await update($, runs, list => [...list, run].slice(-10))
+  await changeRuns($, list => [...list, run].slice(-10))
   await writePage($, run.id)
   void $.ui.open({ id: PANE, title: 'Agent panel' })
   $.ui.status(`${kind} ${run.id}: ${rounds > 1 && kind === 'panel' ? `round 1 of ${rounds}, ` : ''}${seats.length} agents working`)
@@ -722,7 +735,7 @@ async function startRun($: $, kind: RunKind, launch: Launch, config: Config): Pr
   await writePage($, run.id)
   await syncHistory($, run.id)
 
-  return (await read($, runs)).find(one => one.id === run.id) ?? run
+  return (await readRuns($)).find(one => one.id === run.id) ?? run
 }
 
 function isSettled(seat: Seat): boolean {
@@ -734,7 +747,7 @@ async function finish($: $, run: Run, phase: Phase, text: string, outcome?: stri
   const saved = savedLines((await patchRun($, run.id, current => ({ ...current, phase, endedAt, ...(outcome === undefined ? {} : { outcome }) }))) ?? run)
   await writePage($, run.id)
   await syncHistory($, run.id)
-  if (!(await read($, runs)).some(isLive)) stopTicker()
+  if (!(await readRuns($)).some(isLive)) stopTicker()
   $.ui.status(undefined)
   $.ui.toast(`${run.kind} ${run.id} ${phase === 'failed' ? 'failed' : 'finished'}`)
   const isReported = await submit($, saved.length === 0 ? text : `${text}\n\nEnd by telling me this:\n${saved.join('\n')}`)
@@ -1207,7 +1220,6 @@ const BAR = 8
 const TOKEN_WIDTH = 10
 const TONE_COLOR: Record<Tone, string | undefined> = { live: 'claude', good: 'success', bad: 'error', warn: 'warning', quiet: undefined, plain: undefined }
 const HELP_STYLE: Record<HelpTone, { color?: string; bold?: boolean; dimColor?: boolean }> = { heading: { bold: true }, command: { color: 'claude' }, option: { color: 'suggestion' }, quiet: { dimColor: true }, error: { color: 'error' }, warning: { color: 'warning' } }
-const STYLED_COMMANDS = ['panel', 'pingpong', 'panel-preset', 'panel-design', 'panel-stop', 'panel-view']
 const STEP_GLYPH: Record<StepState, string> = { done: '●', now: '◐', todo: '○', skipped: '·', failed: '✗' }
 const STEP_TONE: Record<StepState, Tone> = { done: 'good', now: 'live', todo: 'quiet', skipped: 'quiet', failed: 'bad' }
 const SEAT_GLYPH: Record<Seat['status'], string> = { starting: '○', working: '◐', done: '✓', failed: '✗' }
@@ -1271,6 +1283,18 @@ function seatText(run: Run, seat: Seat, width: number, rows: number, now: number
 function stopTicker(): void {
   ticker?.cancel()
   ticker = undefined
+}
+
+function drawCommandOutput({ Box, Text }: Kit, text: string) {
+  return (
+    <Box flexDirection="column">
+      {helpLines(text).map((line, row) => (
+        <Text key={`help-${row}`}>
+          {line.length === 0 ? ' ' : line.map((span, i) => <Text key={`help-${row}-${i}`} {...(span.tone === undefined ? {} : HELP_STYLE[span.tone])}>{span.text}</Text>)}
+        </Text>
+      ))}
+    </Box>
+  )
 }
 
 function drawSteps({ Box, Text }: Kit, run: Run, now: number) {
@@ -1404,16 +1428,16 @@ function drawLine({ Box, Text, Button }: Kit, run: Run, now: number, width: numb
 
 async function noteActivity($: $, agentId: string, activity: string): Promise<void> {
   const isSeat = (seat: Seat) => seat.agentId === agentId && seat.status === 'working'
-  if (!(await read($, runs)).some(run => isLive(run) && run.seats.some(isSeat))) return
+  if (!(await readRuns($)).some(run => isLive(run) && run.seats.some(isSeat))) return
 
-  await update($, runs, list => list.map(run => ({ ...run, seats: run.seats.map(seat => (isSeat(seat) ? { ...seat, steps: (seat.steps ?? 0) + 1, activity } : seat)) })))
+  await changeRuns($, list => list.map(run => ({ ...run, seats: run.seats.map(seat => (isSeat(seat) ? { ...seat, steps: (seat.steps ?? 0) + 1, activity } : seat)) })))
 }
 
 // The engine resumes a finished seat only while its agent type is offered, and the types are otherwise hidden from the main model.
 let resuming = 0
 
 async function stopRun($: $, id: string): Promise<string> {
-  const live = [...(await read($, runs))].reverse().filter(isLive)
+  const live = [...(await readRuns($))].reverse().filter(isLive)
   const run = id === '' ? live[0] : live.find(one => one.id === id)
   if (!run) return id === '' ? 'No run is in progress.' : `No run "${id}" is in progress.`
 
@@ -1498,13 +1522,19 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('agent.offer', ($, e, next) => (e.agent.startsWith(`${PLUGIN}:`) && resuming === 0 ? { isOffered: false } : next(e)))
+  on('agent.offer', ($, e, next) => {
+    if (e.agent.startsWith(`${PLUGIN}:`) && resuming === 0) return { isOffered: false }
+
+    return next(e)
+  })
 
   on('prompt.submit', async ($, e, next) => {
     if (e.origin?.kind !== 'task-notification') return next(e)
-    const note = collectedNote(await read($, runs), e.text)
+    const note = collectedNote(await readRuns($), e.text)
 
-    return note === undefined ? next(e) : { drop: note }
+    if (note === undefined) return next(e)
+
+    return { drop: note }
   })
 
   on('command.run', { command: 'panel-stop' }, async ($, e) => ({ text: await stopRun($, e.args.trim()) }))
@@ -1535,7 +1565,9 @@ export const register: Register = (on, options) => {
     if ('error' in built) return { deny: built.error }
     const launched = await launch($, 'panel', `${built.args} -- ${input.question}`, config, input.rounds)
 
-    return 'started' in launched ? { result: launched.started } : { deny: launched.errors.join('\n') }
+    if ('started' in launched) return { result: launched.started }
+
+    return { deny: launched.errors.join('\n') }
   })
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong' }, async ($, e) => {
@@ -1544,7 +1576,9 @@ export const register: Register = (on, options) => {
     if ('error' in built) return { deny: built.error }
     const launched = await launch($, 'pingpong', `${built.args} -- ${input.task}`, config, input.rounds)
 
-    return 'started' in launched ? { result: launched.started } : { deny: launched.errors.join('\n') }
+    if ('started' in launched) return { result: launched.started }
+
+    return { deny: launched.errors.join('\n') }
   })
 
   on('tool.call', { tool: 'mcp__agent-panel__git' }, async ($, e) => {
@@ -1562,7 +1596,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__verdict' }, async ($, e) => {
     const runId = String((e as unknown as { runId?: unknown }).runId ?? '')
-    const run = (await read($, runs)).find(one => one.id === runId)
+    const run = (await readRuns($)).find(one => one.id === runId)
     if (!run) return { deny: `No panel or ping-pong run "${runId}".` }
     if (run.dir === undefined || run.page === undefined) return { deny: `Run ${run.id} has no page because its answers were not saved to files. Give the ${run.kind === 'panel' ? 'synthesis' : 'plan'} in the chat instead.` }
     const verdict = readVerdict(e)
@@ -1582,7 +1616,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong_merge' }, async ($, e) => {
     const input = e as unknown as { runId: string; plan: string }
-    const run = (await read($, runs)).find(one => one.id === input.runId)
+    const run = (await readRuns($)).find(one => one.id === input.runId)
     if (!run || run.kind !== 'pingpong') return { deny: `No ping-pong run "${input.runId}".` }
 
     const claimed = await claimStep($, run.id, 'merging', 'challenging', () => true)
@@ -1594,7 +1628,7 @@ export const register: Register = (on, options) => {
       await askSeat($, started, 0, isContinued => challengeBrief(input.plan, 1, started.rounds, isContinued))
       await writePage($, run.id)
     }
-    const after = (await read($, runs)).find(one => one.id === run.id)
+    const after = (await readRuns($)).find(one => one.id === run.id)
     if (after?.phase === 'failed') {
       await patchRun($, run.id, current => ({ ...current, isReported: true }))
       return { result: `Ping-pong ${run.id} stopped: ${run.seats[0]?.label} could not start. ${after.seats[0]?.answer ?? ''} Tell the user the rounds did not run.` }
@@ -1604,7 +1638,7 @@ export const register: Register = (on, options) => {
     return { result: `Candidate handed to ${run.seats[0]?.label} to challenge. ${run.rounds} round(s); the final plan arrives as a new message.` }
   })
 
-  on('turn.step', async function* (_$, e, next) {
+  on('turn.step', async function* ($, e, next) {
     const agentId = e.agentId
     if (agentId === undefined) return yield* next(e)
     const stream = next(e)
@@ -1629,7 +1663,7 @@ export const register: Register = (on, options) => {
     const counted = liveTokens.get(e.agentId) ?? 0
     liveTokens.delete(e.agentId)
 
-    const list = await read($, runs)
+    const list = await readRuns($)
     for (const run of list) {
       const index = run.seats.findIndex(seat => seat.agentId === e.agentId && seat.status === 'working')
       if (index === -1) continue
@@ -1660,26 +1694,17 @@ export const register: Register = (on, options) => {
     return { text: 'Agent panel opened.' }
   })
 
-  for (const command of STYLED_COMMANDS) {
-    on('ui.render', { component: 'CommandOutput', props: { command } }, ($, e) => {
-      const { Box, Text } = $.ui.resolve(e)
-
-      return (
-        <Box flexDirection="column">
-          {helpLines(e.props.text).map((line, row) => (
-            <Text key={`help-${row}`}>
-              {line.length === 0 ? ' ' : line.map((span, i) => <Text key={`help-${row}-${i}`} {...(span.tone === undefined ? {} : HELP_STYLE[span.tone])}>{span.text}</Text>)}
-            </Text>
-          ))}
-        </Box>
-      )
-    })
-  }
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'pingpong' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel-preset' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel-design' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel-stop' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel-view' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const kit = $.ui.resolve(e)
     const { Box, Text, Button } = kit
-    const list = [...(await read($, runs))].reverse()
+    const list = [...(await readRuns($))].reverse()
     if (!list.some(isLive)) stopTicker()
     if (list.length === 0) return <Text dimColor>No panels yet. Try /panel or /pingpong.</Text>
 

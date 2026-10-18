@@ -1,4 +1,7 @@
-# agent-panel
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/lockup-on-dark.svg">
+  <img src="assets/lockup.svg" alt="agent-panel" width="330">
+</picture>
 
 agent-panel is a Claude Code plugin. It sends one question or one task to a group of Claude subagents. Each subagent uses the model and the effort level that you select. Claude then examines their answers and writes one result on a web page.
 
@@ -407,6 +410,66 @@ You can also ask Claude in plain English, for example "get an agent panel on thi
 | `pingpong` | Starts a ping-pong. |
 | `pingpong_merge` | Gives the merged plan back to the ping-pong, which then starts the rounds. |
 | `verdict` | Records the verdict on the page. |
+
+## What the plugin does on your machine
+
+### What it writes
+
+The plugin writes only these files:
+
+| File | When |
+| --- | --- |
+| The run folder in the runs folder (see [Saved answers and settings](#saved-answers-and-settings)): `question.md`, one Markdown file for each answer, `discussion.json`, `discussion.html`, `discussion.rev.js` and `discussion.artifact.html` | When a run starts, when each seat answers, when Claude records the verdict, and when you open an older run from the pane |
+| `history.json` and `history.js` in the project folder of the runs folder | When a run starts or ends, when Claude records the verdict, and when you open a page from the pane |
+| `~/.claude/agent-panel/presets.json` | When you save or delete a preset, or add `as=<name>` to a run |
+| `.claude/agent-panel/presets.json` in the project | When you save or delete a preset with `scope=project` |
+| `~/.claude/agent-panel/design.md` or `.claude/agent-panel/design.md` in the project | Only when you type `/panel-design copy` or `/panel-design copy project`, and only if the file does not exist |
+
+The plugin does not write settings files, instruction files such as `CLAUDE.md`, or build and start-up files. The two `.claude/agent-panel/` files in a project are this plugin's own presets and page design, and nothing else reads them.
+
+### What it reads
+
+- The `HOME` environment variable. The plugin uses it only to find `~/.claude/agent-panel/` and to expand `~` in the runs folder and in skill folders. It reads no other environment variable.
+- Its presets, briefs and design files in `~/.claude/agent-panel/` and in `.claude/agent-panel/` in the project.
+- The `SKILL.md` files in the skill folders that you name with `skills=` or the "Default skill folders" setting.
+- The name of the project folder, for the folder name in the runs folder.
+- The list of slash commands, to find the session skills that `+skill` can name.
+
+### Which programs it runs
+
+- `git`, with one of `status`, `diff`, `log`, `show` or `blame` and the arguments that a seat gives. This is the `git` tool of the seats, so they can read the history of the code under review. The plugin refuses every other git command and the `--output` option, which writes a file. It adds `--no-pager`.
+- `open` on macOS, or `xdg-open` on Linux, with the path of a saved page. The plugin runs it only when you click a run in the pane, to open its page in your browser.
+
+### What it sends, and where
+
+The plugin itself sends nothing over the network. Its seats are Claude subagents, so their requests go to Claude in the same way as any other subagent of your session. A seat can use WebFetch and WebSearch, which reach the web as they do for Claude.
+
+The plugin sends text to two places in your session:
+
+- To its own seats, with `session.send`, to continue a seat in the next round. This text is the next brief: the question or plan, and the answers or challenge of the other seat.
+- To the main chat, as a prompt that Claude answers. The plugin submits a prompt when both ping-pong drafts are in, and when a run finishes or fails. The prompt contains the question or task, the answers of the seats, and the instructions for the merge, the synthesis or the summary.
+
+### What it gives the agents it starts
+
+Each seat is a subagent of a type that the plugin registers for each model and effort. The type has:
+
+- The seat instructions in `hooks/seats.ts`: work read-only, cite the evidence, and answer in the format that the brief asks for.
+- The tools Read, Grep, Glob, WebFetch, WebSearch and the plugin's read-only `git` tool. A seat cannot edit files or run shell commands.
+- The default permission mode, and no hooks.
+- The session skills that the seat names with `+skill`, preloaded. For a skill from a skill folder, the plugin puts the text of its `SKILL.md` in the seat's prompt.
+
+### What its hooks do
+
+| Hook | What it does |
+| --- | --- |
+| `session.start` | Registers the commands, the tools and the seat agent types. It passes the event on unchanged. |
+| `agent.offer` | Hides the seat agent types from Claude, so that Claude cannot start a seat outside a run. It offers a type only while the plugin itself continues one of its seats. |
+| `prompt.submit` | Drops only the task notification that the engine posts when the plugin continues one of its own seats. It passes on every other prompt unchanged. |
+| `tool.call` | Records what each seat is doing, for the pane, and passes the call on unchanged. Separate hooks answer the plugin's own tools: `panel`, `pingpong`, `pingpong_merge`, `verdict` and `git`. It does not stand in for any other tool. |
+| `turn.step` | Reads the text and thinking of each seat as it streams, and the token count of each step, for the pane. It passes every chunk on unchanged. |
+| `turn.complete` | Records the answer of each seat and starts the next step of the run. It passes the result on unchanged. |
+| `command.run` | Answers the plugin's own commands: `/panel`, `/pingpong`, `/panel-preset`, `/panel-design`, `/panel-stop` and `/panel-view`. |
+| `ui.render` | Draws the output of the plugin's own commands in colour, and draws the pane. |
 
 ## Credits
 
