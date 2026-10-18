@@ -76,13 +76,6 @@ function readConfig(options: PluginOptions): Config {
 
 const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
 
-async function findRun($: EngineInterface, id: string): Promise<Run | undefined> {
-  const held = await $.state.get(RUNS)
-  const list = held.value ?? []
-
-  return list.find(one => one.id === id)
-}
-
 async function changeRuns($: EngineInterface, change: (list: Run[]) => Run[]): Promise<Run[]> {
   for (;;) {
     const held = await $.state.get(RUNS)
@@ -490,7 +483,8 @@ async function putPage($: EngineInterface, dir: string, data: AnyPage): Promise<
 }
 
 async function writePageNow($: EngineInterface, id: string): Promise<void> {
-  const run = await findRun($, id)
+  const stored = await $.state.get(RUNS)
+  const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined || run.isReported === true) return
   try {
     await putPage($, run.dir, pageFor(run, await $.clock.now()))
@@ -550,7 +544,8 @@ async function scanHistory($: EngineInterface, root: string, stamp: string): Pro
 let historyQueue: Promise<void> = Promise.resolve()
 
 async function syncHistoryNow($: EngineInterface, id: string): Promise<void> {
-  const run = await findRun($, id)
+  const stored = await $.state.get(RUNS)
+  const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined || run.page === undefined) return
   const root = run.dir.slice(0, run.dir.lastIndexOf('/'))
   const assets = await loadPageAssets($)
@@ -595,7 +590,8 @@ async function restorePage($: EngineInterface, run: Run): Promise<void> {
 }
 
 async function openRun($: EngineInterface, id: string): Promise<void> {
-  const run = await findRun($, id)
+  const stored = await $.state.get(RUNS)
+  const run = (stored.value ?? []).find(one => one.id === id)
   if (!run || run.dir === undefined) return
   const page = `${run.dir}/discussion.html`
   if (!isLive(run) && !(await $.fs.exists(page))) await restorePage($, run).catch(() => undefined)
@@ -747,7 +743,9 @@ async function startRun($: EngineInterface, kind: RunKind, launch: Launch, confi
   await writePage($, run.id)
   await syncHistory($, run.id)
 
-  const current = await findRun($, run.id)
+  const stored = await $.state.get(RUNS)
+
+  const current = (stored.value ?? []).find(one => one.id === run.id)
 
   return current ?? run
 }
@@ -1621,7 +1619,8 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__verdict' }, async ($, e) => {
     const runId = String((e as unknown as { runId?: unknown }).runId ?? '')
-    const run = await findRun($, runId)
+    const stored = await $.state.get(RUNS)
+    const run = (stored.value ?? []).find(one => one.id === runId)
     if (!run) return { deny: `No panel or ping-pong run "${runId}".` }
     if (run.dir === undefined || run.page === undefined) return { deny: `Run ${run.id} has no page because its answers were not saved to files. Give the ${run.kind === 'panel' ? 'synthesis' : 'plan'} in the chat instead.` }
     const verdict = readVerdict(e)
@@ -1641,7 +1640,8 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: 'mcp__agent-panel__pingpong_merge' }, async ($, e) => {
     const input = e as unknown as { runId: string; plan: string }
-    const run = await findRun($, input.runId)
+    const stored = await $.state.get(RUNS)
+    const run = (stored.value ?? []).find(one => one.id === input.runId)
     if (!run || run.kind !== 'pingpong') return { deny: `No ping-pong run "${input.runId}".` }
 
     const claimed = await claimStep($, run.id, 'merging', 'challenging', () => true)
@@ -1653,7 +1653,8 @@ export const register: Register = (on, options) => {
       await askSeat($, started, 0, isContinued => challengeBrief(input.plan, 1, started.rounds, isContinued))
       await writePage($, run.id)
     }
-    const after = await findRun($, run.id)
+    const storedAfter = await $.state.get(RUNS)
+    const after = (storedAfter.value ?? []).find(one => one.id === run.id)
     if (after?.phase === 'failed') {
       await patchRun($, run.id, current => ({ ...current, isReported: true }))
       return { result: `Ping-pong ${run.id} stopped: ${run.seats[0]?.label} could not start. ${after.seats[0]?.answer ?? ''} Tell the user the rounds did not run.` }
