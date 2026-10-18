@@ -120,7 +120,7 @@ cp hooks/safety-guard/safety-guard.ts hooks/comment-budget/comment-budget.ts ~/.
 
 | Plugin | What it does |
 | --- | --- |
-| [`agent-panel`](plugins/agent-panel) | Agent panels and ping-pong planning with read-only Claude subagents, each at its own model and effort. |
+| [Agent Panel](plugins/agent-panel) | Agent panels and ping-pong planning with read-only Claude subagents, each at its own model and effort. |
 
 Install from a Claude Code terminal session:
 
@@ -130,7 +130,7 @@ Install from a Claude Code terminal session:
 
 Answer `y` to add the marketplace, then pick a scope.
 
-### `agent-panel`
+### Agent Panel
 
 ```
 /panel -- Why is the feed query slow?

@@ -1,9 +1,9 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/lockup-on-dark.svg">
-  <img src="assets/lockup.svg" alt="agent-panel" width="330">
+  <img src="assets/lockup.svg" alt="Agent Panel" width="330">
 </picture>
 
-agent-panel is a Claude Code plugin. It sends one question or one task to a group of Claude subagents. Each subagent uses the model and the effort level that you select. Claude then examines their answers and writes one result on a web page.
+Agent Panel is a Claude Code plugin. It sends one question or one task to a group of Claude subagents. Each subagent uses the model and the effort level that you select. Claude then examines their answers and writes one result on a web page.
 
 ```
 /panel opus:xhigh sonnet:high opus:high:contrarian -- Why is the feed query slow?

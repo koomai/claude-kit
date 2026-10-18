@@ -1529,7 +1529,7 @@ export const register: Register = (on, options) => {
 
     await $.tool.register({
       name: 'git',
-      description: 'Read-only git for agent-panel seats: status, diff, log, show or blame with its arguments as a list. No shell.',
+      description: 'Read-only git for Agent Panel seats: status, diff, log, show or blame with its arguments as a list. No shell.',
       inputSchema: { type: 'object', properties: { command: { type: 'string', enum: [...GIT_COMMANDS] }, args: { type: 'array', items: { type: 'string' } } }, required: ['command'] },
     })
     await Promise.all(

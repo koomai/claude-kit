@@ -1,5 +1,6 @@
 {
   "name": "agent-panel",
+  "displayName": "Agent Panel",
   "version": "0.5.3",
   "author": {
     "name": "koomai"
