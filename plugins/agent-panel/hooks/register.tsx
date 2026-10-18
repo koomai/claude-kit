@@ -77,9 +77,9 @@ function readConfig(options: PluginOptions): Config {
 const RUNS = { plugin: 'agent-panel', key: 'runs' } as const
 
 async function readRuns($: EngineInterface): Promise<Run[]> {
-  const { value = [] } = await $.state.get(RUNS)
+  const held = await $.state.get(RUNS)
 
-  return value
+  return held.value ?? []
 }
 
 async function findRun($: EngineInterface, id: string): Promise<Run | undefined> {
