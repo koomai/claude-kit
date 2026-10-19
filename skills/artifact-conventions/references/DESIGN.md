@@ -1,18 +1,11 @@
----
-name: artifact-theme
-description: >-
-  House visual identity for artifacts and standalone HTML pages — palette, typefaces, layout, and
-  the looks to avoid. Read before building any artifact, artifact page, visual explainer, dashboard,
-  landing page, or self-contained HTML document.
----
+# Design
 
-# Artifact Theme
+The look of every artifact and standalone HTML page in this project: palette, typefaces, layout,
+and the looks to avoid. `artifact-conventions` reads it before writing any CSS.
 
-House tokens and rules for anything published as an artifact or a standalone HTML page.
-
-Precedence: follow the user's request in the session, then the project's design system if it has one, then this file. This file replaces the model's default aesthetic choices — not the structural rules in `artifact-design` (theme token structure, CSP-permitted hosts, `<title>` naming, visible-at-rest rendering), which still apply.
-
-> Replace the palette, type, and Never list below with your own.
+This is the starter design bundled with the skill. To make it your own, copy it to `DESIGN.md` at
+your project root (or `.claude/DESIGN.md`) and replace the palette, type, layout and Never list.
+Keep the token names in the first block: the decisions-table script styles itself with them.
 
 ## Color
 
@@ -86,7 +79,7 @@ Dark values. The accent brightens — `#0e7f6f` reads near-black at badge size o
 
 Inter is deliberate here, overriding `artifact-design`'s warning against it. For a display face with more character, swap the display row only.
 
-- Scale: 12 / 14 / 16 / 20 / 26 / 34 / 44
+- Scale: 13 / 14 / 16 / 20 / 26 / 34 / 44. Nothing smaller than 13px, SVG labels included
 - Running text near 65 characters wide
 - `text-wrap: balance` on headings, `0.06em` letter-spacing on uppercase labels
 - `font-variant-numeric: tabular-nums` wherever digits align

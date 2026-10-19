@@ -15,7 +15,7 @@ My Claude Code skills, reusable prompts, hooks, and plugins.
 
 | Skill | Description |
 | --- | --- |
-| [`artifact-theme`](skills/artifact-theme/SKILL.md) | House visual identity for artifacts and standalone HTML pages — palette, typefaces, layout, and the looks to avoid. Includes a teal, elevation-over-borders theme as a starting point — replace it with your own. |
+| [`artifact-conventions`](skills/artifact-conventions/SKILL.md) | House conventions for artifacts and standalone HTML pages: page structure, the AI tells to avoid, diagram and copy rules, and a decisions table the reader answers and copies back to Claude. The look comes from a `DESIGN.md` you copy into each project; a teal starter is bundled. |
 | [`commit`](skills/commit/SKILL.md) | Group uncommitted changes into atomic commits, one per purpose, flagging anything not touched in the current session before staging it. |
 | [`discuss`](skills/discuss/SKILL.md) | Critical discussion mode — no code, no implementation, no file changes. For debating architecture, weighing tradeoffs, or thinking through a decision before implementing. Manual invocation only (`/discuss`). |
 | [`git-summary`](skills/git-summary/SKILL.md) | Bullet-point summary of the current branch — what its commits accomplish, what's still uncommitted, and any loose ends — measured against the default branch. |
@@ -41,16 +41,25 @@ Then invoke it in Claude Code:
 /merge-from develop    # merge a named branch instead
 ```
 
-### Enabling `artifact-theme`
+### Enabling `artifact-conventions`
 
-This skill is not loaded automatically. Add this line to your global `~/.claude/CLAUDE.md`:
+Claude invokes the skill when a request matches its description. To have it read for every page, including ones that don't mention an artifact, add this line to your global `~/.claude/CLAUDE.md`:
 
 ```markdown
 Before building any artifact or standalone HTML page, read
-`~/.claude/skills/artifact-theme/SKILL.md` and use its tokens.
+`~/.claude/skills/artifact-conventions/SKILL.md` and follow it.
 ```
 
-Then replace the palette, typefaces, and layout in the skill with your own.
+The skill reads the look from the first of `DESIGN.md` at the project root, `.claude/DESIGN.md`,
+or its bundled starter, [`references/DESIGN.md`](skills/artifact-conventions/references/DESIGN.md).
+To give a project its own look, copy the starter into the project and edit it:
+
+```bash
+cp skills/artifact-conventions/references/DESIGN.md /path/to/project/DESIGN.md
+```
+
+Keep the token names in its first CSS block. The decisions-table script,
+[`scripts/decisions.js`](skills/artifact-conventions/scripts/decisions.js), styles itself with them.
 
 ## Prompts
 
