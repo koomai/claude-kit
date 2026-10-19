@@ -169,9 +169,9 @@ When the artifact is a canvas of artboards (mockups, screen states):
   returning to the canvas, and ‹ › buttons sit at the left and right screen edges.
 - The zoomed view shows the caption in a bottom-centre pill: `title · n / total`.
 - Switching artboards never flickers through the canvas. Cover the switch with a slide curtain: a
-  full-screen panel slides in from the direction of travel and out the other side.
+  dark full-screen panel slides in from the direction of travel and out the other side.
 - A stock canvas template usually lacks these. Patch the template once per task and seed from the
-  patched copy.
+  patched copy. Patch it again if the template's skill version changes.
 
 ## 8. Before publishing
 
