@@ -15,7 +15,7 @@ My Claude Code skills, reusable prompts, hooks, and plugins.
 
 | Skill | Description |
 | --- | --- |
-| [`artifact-conventions`](skills/artifact-conventions/SKILL.md) | House conventions for artifacts and standalone HTML pages: page structure, the AI tells to avoid, diagram and copy rules, and a decisions table the reader answers and copies back to Claude. The look comes from a `DESIGN.md` you copy into each project; a teal starter is bundled. |
+| [`artifact-conventions`](skills/artifact-conventions/SKILL.md) | House conventions for artifacts and standalone HTML pages: page structure, the AI tells to avoid, diagram and copy rules, and a decisions table the reader answers and copies back to Claude. The look comes from the `DESIGN.md` in your project, if it exists, or the bundled teal starter. |
 | [`commit`](skills/commit/SKILL.md) | Group uncommitted changes into atomic commits, one per purpose, flagging anything not touched in the current session before staging it. |
 | [`discuss`](skills/discuss/SKILL.md) | Critical discussion mode — no code, no implementation, no file changes. For debating architecture, weighing tradeoffs, or thinking through a decision before implementing. Manual invocation only (`/discuss`). |
 | [`git-summary`](skills/git-summary/SKILL.md) | Bullet-point summary of the current branch — what its commits accomplish, what's still uncommitted, and any loose ends — measured against the default branch. |
