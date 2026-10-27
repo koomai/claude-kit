@@ -98,6 +98,12 @@ Imagery:
 
 ## 4. Diagrams
 
+- Draw technical diagrams (architecture, flowchart, sequence, state, ER, timeline, swimlane, tree)
+  with the `diagram-design:diagram-design` skill when it is listed. Skip its style-guide setup gate
+  and give it the `DESIGN.md` tokens instead of its neutral skin. When it isn't listed, offer the
+  user the install once (`claude plugin marketplace add cathrynlavery/diagram-design`, then
+  `claude plugin install diagram-design@diagram-design`, then `/reload-plugins`) and draw the
+  diagram by hand meanwhile.
 - Keep diagrams; they carry the page. Prefer a clearly labelled illustration to a paragraph when
   explaining a workflow or a structure.
 - Draw charts to scale: every mark and tick from one scale, every label a value the chart reaches.
