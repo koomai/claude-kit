@@ -1,0 +1,10 @@
+{
+  "name": "decisions",
+  "displayName": "Decisions",
+  "version": "0.1.0",
+  "author": {
+    "name": "koomai"
+  },
+  "description": "A pane beside the chat that lists the session's open decisions, takes answers and comments, and sends them back to Claude",
+  "types": "./types/index.d.ts"
+}

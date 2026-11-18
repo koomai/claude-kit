@@ -130,11 +130,13 @@ cp hooks/safety-guard/safety-guard.ts hooks/comment-budget/comment-budget.ts ~/.
 | Plugin | What it does |
 | --- | --- |
 | [Agent Panel](plugins/agent-panel) | Agent panels and ping-pong planning with read-only Claude subagents, each at its own model and effort. |
+| [Decisions](plugins/decisions) | A pane beside the chat that holds Claude's open questions, where you answer, comment and send them back in one go. |
 
 Install from a Claude Code terminal session:
 
 ```
 /plugin install agent-panel --marketplace koomai/claude-kit
+/plugin install decisions --marketplace koomai/claude-kit
 ```
 
 Answer `y` to add the marketplace, then pick a scope.
