@@ -5,7 +5,7 @@ and the looks to avoid. `artifact-conventions` reads it before writing any CSS.
 
 This is the starter design bundled with the skill. To make it your own, copy it to `DESIGN.md` at
 your project root (or `.claude/DESIGN.md`) and replace the palette, type, layout and Never list.
-Keep the token names in the first block: the decisions-table script styles itself with them.
+Keep the token names in the first block. The decisions-table script and `artifact-conventions` use them.
 
 ## Color
 
@@ -16,7 +16,7 @@ Neutrals carry a blue cast, away from the teal accent.
   --ground: #f7f9fc;        /* page background */
   --surface: #ffffff;       /* cards, raised panels */
   --sunken: #f1f6fd;        /* bands separating content groups */
-  --line: #e3e9f1;          /* hairlines — barely visible by design */
+  --line: #e3e9f1;          /* hairlines, barely visible by design */
   --line-strong: #c4d1e0;   /* the rare border that must read */
   --ink: #0f1720;           /* body text */
   --ink-2: #45535f;         /* secondary text */
@@ -39,7 +39,7 @@ Neutrals carry a blue cast, away from the teal accent.
 }
 ```
 
-Dark values. The accent brightens — `#0e7f6f` reads near-black at badge size on a dark ground. Shadows go black and heavier.
+Dark values. The accent brightens, because `#0e7f6f` reads near-black at badge size on a dark ground. Shadows go black and heavier.
 
 ```css
 --ground: #0e1214;
@@ -63,7 +63,7 @@ Dark values. The accent brightens — `#0e7f6f` reads near-black at badge size o
 --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 24px -8px rgba(0, 0, 0, 0.6);
 ```
 
-`link`, `warn` and `bad` are semantic — never substitutes for the accent.
+`link`, `warn` and `bad` are semantic. Never use them in place of the accent.
 
 ## Type
 
@@ -79,8 +79,7 @@ Dark values. The accent brightens — `#0e7f6f` reads near-black at badge size o
 
 Inter is deliberate here, overriding `artifact-design`'s warning against it. For a display face with more character, swap the display row only.
 
-- Scale: 13 / 14 / 16 / 20 / 26 / 34 / 44. Nothing smaller than 13px, SVG labels included
-- Running text near 65 characters wide
+- Scale: 13 / 14 / 16 / 20 / 26 / 34 / 44
 - `text-wrap: balance` on headings, `0.06em` letter-spacing on uppercase labels
 - `font-variant-numeric: tabular-nums` wherever digits align
 

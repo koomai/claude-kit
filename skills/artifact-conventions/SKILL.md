@@ -3,9 +3,8 @@ name: artifact-conventions
 description: >-
   Builds artifacts and standalone HTML pages in the house style, taking the look from the project's
   DESIGN.md. Use when asked to make, publish, redesign or fix an artifact, HTML page, report,
-  explainer, review, decision page, dashboard or mockup canvas; when a page looks generic, off-brand,
-  like "AI slop" or broken on a phone; or when the reader has to answer decisions and paste the
-  answers back.
+  explainer, review or decision page; when a page looks generic, off-brand, like "AI slop" or
+  broken on a phone; or when the reader has to answer decisions and paste the answers back.
 ---
 
 # Artifact Conventions
@@ -15,6 +14,9 @@ style) lives in a separate `DESIGN.md`; this file holds the rules that apply wha
 
 Precedence: the user's words in the session, then `DESIGN.md`, then this file. The structural rules
 of `artifact-design` (CSP hosts, `<title>` naming, content visible at rest) still apply.
+
+These rules cover pages written by hand. A page started from an Artifact type (a deck, a document,
+a dashboard that shows data) follows that type's instructions instead.
 
 ## 1. Load the design
 
@@ -34,8 +36,8 @@ light only, declare `color-scheme: light` and add no dark palette.
 ### Required tokens
 
 The decisions-table script styles itself with these CSS variables, so every `DESIGN.md` defines
-them on `:root`: `--ground`, `--surface`, `--sunken`, `--line`, `--line-strong`, `--ink`,
-`--ink-2`, `--accent`, `--accent-soft`, `--on-accent`, `--radius-sm`, `--radius-md`.
+them on `:root`: `--surface`, `--sunken`, `--line`, `--line-strong`, `--ink`, `--ink-2`,
+`--accent`, `--on-accent`, `--radius-sm`, `--radius-md`.
 
 ## 2. Page structure
 
@@ -124,11 +126,12 @@ Imagery:
 ## 6. Decisions table
 
 Every page that asks the reader for decisions ends with an answerable decisions table. The script
-`scripts/decisions.js` in this skill's directory turns the table into a form and adds a copy
-button; the reader pastes the copied text back to Claude.
+`scripts/decisions.js` in this skill's directory turns the table into a form that sends the answers
+to Claude or copies them for pasting.
 
 Inline the script's contents in a `<script>` at the end of the page. A `src` on another host is
-blocked by the artifact CSP.
+blocked by the artifact CSP. Publish the page with `capabilities: {comments: {}}`, which lets the
+form send answers straight to the session that published it.
 
 ```html
 <table class="decisions" data-decisions="Search filter usage">
@@ -157,33 +160,32 @@ blocked by the artifact CSP.
 | `text` | An always-open textarea | A row that needs a written answer. |
 | omitted | Comment only | An information row, such as "No change". |
 
-Every row also gets an optional comment, and the form ends with "Anything else" and "Copy answers
-for Claude". The copied text lists each decision with its recommendation, the answer ("No answer"
-when blank) and any comment. Answers are kept in the viewer's `localStorage` as an unsent draft
-only; nothing reaches Claude until the reader pastes. When the browser blocks the copy, the text
-appears selected in a textarea for a keyboard copy.
+Every row also gets an optional comment, and the form ends with "Anything else" and the buttons:
+
+- **Send to Claude** shows when the platform reports that sending is available: the page declares
+  `comments`, the viewer is an editor, and a Claude session is watching the artifact. It posts the
+  answers as a comment thread on the table, and the watching session receives it as a turn and
+  replies in the thread. The sent text leaves out the recommendations to stay under the 4 KiB
+  comment limit.
+- **Copy answers for Claude** is always there, as a secondary button beside Send. The copied text
+  lists each decision with its recommendation, the answer ("No answer" when blank) and any comment.
+  When the browser blocks the copy, the text appears selected in a textarea for a keyboard copy.
+
+A note beside the buttons says why Send is missing or why a send failed. Answers are kept in the
+viewer's `localStorage` as an unsent draft only.
 
 Mark rows that need an answer visibly (a tinted row or a status pill), and say above the table that
-the reader answers here and pastes the result back.
+the reader answers here and sends or copies the result back.
 
-## 7. Design-canvas mockups
+## 7. Before publishing
 
-When the artifact is a canvas of artboards (mockups, screen states):
+Check the source: every colour, font, size and radius comes from `DESIGN.md`, and none of the
+tells in section 3 appear.
 
-- The per-artboard open control is an eye or magnifying-glass icon, never a play button.
-- In the zoomed view, the left and right arrow keys move to the previous or next artboard without
-  returning to the canvas, and ‹ › buttons sit at the left and right screen edges.
-- The zoomed view shows the caption in a bottom-centre pill: `title · n / total`.
-- Switching artboards never flickers through the canvas. Cover the switch with a slide curtain: a
-  dark full-screen panel slides in from the direction of travel and out the other side.
-- A stock canvas template usually lacks these. Patch the template once per task and seed from the
-  patched copy. Patch it again if the template's skill version changes.
-
-## 8. Before publishing
-
-Look at the rendered page once, at desktop width and at 390px:
+Then open the page once with the `agent-browser` skill, at 1280px and at 390px wide. Only a render
+catches these:
 
 - No horizontal scroll and no console errors.
-- Every colour, font, size and radius comes from `DESIGN.md`.
-- None of the tells in section 3.
 - The decisions table answers, copies and keeps its draft across a reload.
+
+If the browser fails to start or load the page, stop and tell the user what broke.

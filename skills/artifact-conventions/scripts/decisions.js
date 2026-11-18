@@ -21,6 +21,8 @@
     .decisions-form .submit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
     .decisions-form .copy { border: 0; border-radius: var(--radius-md, 10px); padding: 12px 22px; background: var(--accent, #0e7f6f); color: var(--on-accent, #ffffff); font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; }
     .decisions-form .copy:focus-visible { outline: 2px solid var(--ink, #0f1720); outline-offset: 2px; }
+    .decisions-form .copy:disabled { opacity: 0.6; cursor: progress; }
+    .decisions-form .copy.secondary { background: var(--surface, #ffffff); color: var(--accent, #0e7f6f); box-shadow: inset 0 0 0 1px var(--line-strong, #c4d1e0); }
     .decisions-form .progress { font-size: 14px; color: var(--ink-2, #45535f); }
     .decisions-form .fallback { min-height: 200px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-ligatures: none; font-size: 13px; }
     @media (max-width: 720px) {
@@ -49,13 +51,13 @@
     return { read, write };
   }
 
-  function commentBox(id, label, store, alwaysOpen) {
+  function commentBox(id, key, label, store, alwaysOpen) {
     const area = document.createElement('textarea');
     area.id = `${id}-comment`;
     area.setAttribute('aria-label', label);
     area.placeholder = alwaysOpen ? 'Your answer' : 'Comment (optional)';
-    area.value = store.read(`${id}:comment`);
-    area.addEventListener('input', () => store.write(`${id}:comment`, area.value));
+    area.value = store.read(`${key}:comment`);
+    area.addEventListener('input', () => store.write(`${key}:comment`, area.value));
 
     if (alwaysOpen || area.value) {
       return { nodes: [area], area };
@@ -75,9 +77,10 @@
     return { nodes: [toggle, area], area };
   }
 
-  function enhance(table) {
+  function enhance(table, tableIndex) {
     const title = table.dataset.decisions || document.title;
-    const store = storage(`plu-decisions:${title}`);
+    const store = storage(`artifact-decisions:${title}`);
+    const scope = `t${tableIndex + 1}`;
     const rows = [];
 
     const headCells = table.querySelectorAll('thead th');
@@ -87,7 +90,8 @@
 
     table.querySelectorAll('tbody tr').forEach((tr, index) => {
       const cells = tr.querySelectorAll('td');
-      const id = `d-${tr.dataset.decision || index + 1}`;
+      const key = `d-${tr.dataset.decision || index + 1}`;
+      const id = `${scope}-${key}`;
       const ask = tr.dataset.ask || 'none';
       const choices = ask === 'choice' ? (tr.dataset.choices || '').split('|').filter(Boolean) : ASKS[ask];
       const decision = text(cells[0]);
@@ -106,7 +110,7 @@
         const legend = document.createElement('legend');
         legend.textContent = decision;
         fieldset.append(legend);
-        const saved = store.read(`${id}:choice`);
+        const saved = store.read(`${key}:choice`);
         choices.forEach((value, i) => {
           const label = document.createElement('label');
           label.className = 'choice';
@@ -117,7 +121,7 @@
           input.value = value;
           input.checked = saved === value;
           input.addEventListener('change', () => {
-            store.write(`${id}:choice`, value);
+            store.write(`${key}:choice`, value);
             update();
           });
           const span = document.createElement('span');
@@ -129,7 +133,7 @@
         wrap.append(fieldset);
       }
 
-      const { nodes, area } = commentBox(id, `${ask === 'text' ? 'Answer' : 'Comment'}: ${decision}`, store, ask === 'text');
+      const { nodes, area } = commentBox(id, key, `${ask === 'text' ? 'Answer' : 'Comment'}: ${decision}`, store, ask === 'text');
       area.addEventListener('input', update);
       row.comment = area;
       wrap.append(...nodes);
@@ -144,10 +148,10 @@
     const general = document.createElement('div');
     general.className = 'general';
     const generalLabel = document.createElement('label');
-    generalLabel.htmlFor = 'd-general';
+    generalLabel.htmlFor = `${scope}-general`;
     generalLabel.textContent = 'Anything else';
     const generalArea = document.createElement('textarea');
-    generalArea.id = 'd-general';
+    generalArea.id = `${scope}-general`;
     generalArea.placeholder = 'Optional';
     generalArea.value = store.read('general');
     generalArea.addEventListener('input', () => store.write('general', generalArea.value));
@@ -162,7 +166,15 @@
     const progress = document.createElement('span');
     progress.className = 'progress';
     progress.setAttribute('aria-live', 'polite');
-    submit.append(button, progress);
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'copy send';
+    send.textContent = 'Send to Claude';
+    send.hidden = true;
+    const sendNote = document.createElement('span');
+    sendNote.className = 'progress';
+    sendNote.setAttribute('aria-live', 'polite');
+    submit.append(send, button, progress, sendNote);
 
     const fallback = document.createElement('textarea');
     fallback.className = 'fallback';
@@ -183,11 +195,11 @@
       progress.textContent = `${done} of ${asked.length} answered`;
     }
 
-    function compose() {
+    function compose(withRecommendations = true) {
       const lines = [`Decisions: ${title}`, ''];
       rows.forEach((row, i) => {
         lines.push(`${i + 1}. ${row.decision}`);
-        if (row.recommendation) lines.push(`   Recommendation: ${row.recommendation}`);
+        if (withRecommendations && row.recommendation) lines.push(`   Recommendation: ${row.recommendation}`);
         if (row.ask === 'none') {
           if (row.status) lines.push(`   Status: ${row.status}`);
         } else if (row.ask !== 'text') {
@@ -226,11 +238,78 @@
       }, showFallback);
     });
 
+    const SEND_LIMIT_BYTES = 4096;
+    const SEND_OFF_CODES = ['forbidden', 'not_granted', 'capability_disabled', 'capability_removed'];
+    let comments = null;
+    let sendBlocked = false;
+
+    function showSend(on, reason = '') {
+      send.hidden = !on;
+      button.classList.toggle('secondary', on);
+      sendNote.textContent = reason;
+    }
+
+    async function refreshSend() {
+      if (!comments || sendBlocked || typeof comments.canSendToClaude !== 'function') {
+        showSend(false);
+        return;
+      }
+      let state = 'off';
+      try { state = await comments.canSendToClaude(); } catch {}
+      const reasons = {
+        writers_only: 'Only editors of this page can send answers to Claude. Use Copy.',
+        no_session: 'No Claude session is watching this page right now. Use Copy.',
+      };
+      showSend(state === 'available', reasons[state] || '');
+    }
+
+    send.addEventListener('click', async () => {
+      const output = compose(false);
+      if (new TextEncoder().encode(output).length > SEND_LIMIT_BYTES) {
+        sendNote.textContent = 'Too long to send as one comment. Use Copy.';
+        return;
+      }
+      send.disabled = true;
+      try {
+        const anchor = await comments.anchorFor(table);
+        await comments.sendToClaude({ anchor, text: output });
+        sendNote.textContent = 'Sent. Claude replies in the comment thread on this table.';
+      } catch (error) {
+        const code = error?.code;
+        if (SEND_OFF_CODES.includes(code)) {
+          sendBlocked = true;
+          showSend(false, 'Sending from this page is off here. Use Copy.');
+        } else if (code === 'claude_unavailable') {
+          await refreshSend();
+          sendNote.textContent = 'Not sent: no Claude session could take it. Use Copy.';
+        } else {
+          sendNote.textContent = {
+            consent_required: 'Not sent. Allow comments from this page when asked, then press Send again.',
+            rate_limited: 'Not sent: too many sends. Wait a minute, then try again.',
+            invalid: 'Not sent: the answers could not be posted as a comment. Use Copy.',
+          }[code] || 'Sending failed. Check the comment thread before sending again, or use Copy.';
+        }
+      } finally {
+        send.disabled = false;
+      }
+    });
+
+    if (typeof window.claude?.use === 'function') {
+      window.claude.use('comments').then(namespace => {
+        comments = namespace;
+        refreshSend();
+      }, () => {});
+      window.addEventListener('focus', refreshSend);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshSend();
+      });
+    }
+
     update();
   }
 
   const style = document.createElement('style');
   style.textContent = css;
   document.head.append(style);
-  document.querySelectorAll('table[data-decisions]').forEach(enhance);
+  document.querySelectorAll('table[data-decisions]').forEach((table, i) => enhance(table, i));
 })();
