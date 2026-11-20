@@ -105,6 +105,7 @@ Seats are read-only. A seat can use only these tools: Read, Grep, Glob, WebFetch
 | `/panel-preset` | Saves, lists, shows and deletes presets. It also lists the skills in your skill folders. |
 | `/panel-stop` | Stops a run after the current round. Without a run ID, it stops the newest run. To stop a different run, type `/panel-stop <run id>`. |
 | `/panel-view` | Opens the pane. |
+| `/panel-close` | Closes the pane. ctrl+x then x, or a click on the pane's close mark, also closes it. |
 | `/panel-design` | Shows which design files the page uses. `/panel-design copy` makes a copy that you can change. |
 
 To see all options, presets and briefs, type `/panel help`, `/pingpong help` or `/panel-preset help`.
@@ -218,7 +219,7 @@ The default is 1 round. The maximum is 5 rounds.
 
 ## The pane
 
-To open the pane, type `/panel-view`. The pane shows one card for each run. A card shows the current step of the run. For each seat, the card shows:
+To open the pane, type `/panel-view`. To close it, type `/panel-close`. The pane shows one card for each run. A card shows the current step of the run. For each seat, the card shows:
 
 - Its status.
 - Its time.
@@ -468,7 +469,7 @@ Each seat is a subagent of a type that the plugin registers for each model and e
 | `tool.call` | Records what each seat is doing, for the pane, and passes the call on unchanged. Separate hooks answer every call to the plugin's own tools, `panel`, `pingpong`, `pingpong_merge`, `verdict` and `git`, in place of the tool: the plugin registers these tools, and these hooks are how they run. It never answers a call to any other tool. |
 | `turn.step` | Reads the text and thinking of each seat as it streams, and the token count of each step, for the pane. It passes every chunk on unchanged. |
 | `turn.complete` | Records the answer of each seat and starts the next step of the run. It passes the result on unchanged. |
-| `command.run` | Answers the plugin's own commands: `/panel`, `/pingpong`, `/panel-preset`, `/panel-design`, `/panel-stop` and `/panel-view`. |
+| `command.run` | Answers the plugin's own commands: `/panel`, `/pingpong`, `/panel-preset`, `/panel-design`, `/panel-stop`, `/panel-view` and `/panel-close`. |
 | `ui.render` | Draws the output of the plugin's own commands in colour, and draws the pane. |
 
 ## Credits

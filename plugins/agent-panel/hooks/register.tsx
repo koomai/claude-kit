@@ -153,7 +153,7 @@ Examples
   /panel review brief=bughunt -- the retry changes on this branch
   /panel deep rounds=2 -- Should we split this table before or after the migration?
 
-/panel-stop ends a run after its current round. /panel-view opens the pane. /pingpong help covers plan ping-pong. Settings are under /config.`
+/panel-stop ends a run after its current round. /panel-view opens the pane and /panel-close closes it. /pingpong help covers plan ping-pong. Settings are under /config.`
 }
 
 function pingpongUsage(loaded: Loaded): string {
@@ -172,7 +172,7 @@ Examples
   /pingpong -- Plan the billing migration
   /pingpong opus:xhigh sonnet:high rounds=2 -- Plan the billing migration
 
-/panel-view opens the pane. /panel help covers question panels. Settings are under /config.`
+/panel-view opens the pane and /panel-close closes it. /panel help covers question panels. Settings are under /config.`
 }
 
 const registeredTypes = new Set<string>()
@@ -1481,6 +1481,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'panel', description: 'Ask a panel of Claude agents (model:effort each) one question', argumentHint: '[seats|preset] [rounds=N] -- <question> | help' })
     await $.command.register({ name: 'panel-view', description: 'Open the agent panel pane' })
+    await $.command.register({ name: 'panel-close', description: 'Close the agent panel pane' })
     await $.command.register({ name: 'panel-design', description: 'Show where the page design comes from, or write a copy to change', argumentHint: '[copy [user|project]]' })
     await $.command.register({ name: 'panel-stop', description: 'End a panel or ping-pong run after its current round', argumentHint: '[run id]' })
     await $.command.register({ name: 'panel-preset', description: 'Save, list and delete agent panel presets', argumentHint: 'save <name> <seats> | list | show <name> | delete <name> | skills [filter] | help' })
@@ -1737,12 +1738,18 @@ export const register: Register = (on, options) => {
     return { text: 'Agent panel opened.' }
   })
 
+  on('command.run', { command: 'panel-close' }, async $ => {
+    await $.ui.close({ id: PANE })
+    return { text: 'Agent panel closed. /panel-view opens it again.' }
+  })
+
   on('ui.render', { component: 'CommandOutput', props: { command: 'panel' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
   on('ui.render', { component: 'CommandOutput', props: { command: 'pingpong' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
   on('ui.render', { component: 'CommandOutput', props: { command: 'panel-preset' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
   on('ui.render', { component: 'CommandOutput', props: { command: 'panel-design' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
   on('ui.render', { component: 'CommandOutput', props: { command: 'panel-stop' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
   on('ui.render', { component: 'CommandOutput', props: { command: 'panel-view' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
+  on('ui.render', { component: 'CommandOutput', props: { command: 'panel-close' } }, ($, e) => drawCommandOutput($.ui.resolve(e), e.props.text))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const kit = $.ui.resolve(e)
